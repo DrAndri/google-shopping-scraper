@@ -3,6 +3,7 @@ import https from "https";
 import concat from "concat-stream";
 import { InfluxDB } from "@influxdata/influxdb-client";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
+import cron from "node-cron";
 
 import StoreUpdater from "./StoreUpdater.js";
 import config from "./config.js";
@@ -40,41 +41,48 @@ function downloadFeed(url) {
   });
 }
 
-for (const store of config) {
-  const inFluxWriteApi = inFluxClient.getWriteApi(org, store.bucket);
-  const storeUpdater = new StoreUpdater(
-    inFluxQueryApi,
-    inFluxWriteApi,
-    store.bucket
-  );
-  downloadFeed(store.feedUrl).then((jsonObj) => {
-    const timestamp = new Date();
-    let promises = [];
-    for (const item of jsonObj.rss.channel.item) {
-      promises.push(
-        limit(() =>
-          storeUpdater.writeDataPointIfPriceIsDifferent(item, timestamp)
-        )
-      );
-    }
-    Promise.all(promises).then((results) => {
-      inFluxWriteApi
-        .close()
-        .then(() => {
-          let pricesUpdated = 0;
-          let salePricesUpdated = 0;
-          for (const result of results) {
-            if (result[0]) pricesUpdated++;
-            if (result[1]) salePricesUpdated++;
-          }
-          console.log("FINISHED UPDATING", store.bucket);
-          console.log(pricesUpdated, "prices updated");
-          console.log(salePricesUpdated, "sale prices updated");
-        })
-        .catch((e) => {
-          console.error(e);
-          console.log("ERROR updateing", store.bucket);
-        });
+function updateAllStores() {
+  for (const store of config) {
+    const inFluxWriteApi = inFluxClient.getWriteApi(org, store.bucket);
+    const storeUpdater = new StoreUpdater(
+      inFluxQueryApi,
+      inFluxWriteApi,
+      store.bucket
+    );
+    downloadFeed(store.feedUrl).then((jsonObj) => {
+      const timestamp = new Date();
+      let promises = [];
+      for (const item of jsonObj.rss.channel.item) {
+        promises.push(
+          limit(() =>
+            storeUpdater.writeDataPointIfPriceIsDifferent(item, timestamp)
+          )
+        );
+      }
+      Promise.all(promises).then((results) => {
+        inFluxWriteApi
+          .close()
+          .then(() => {
+            let pricesUpdated = 0;
+            let salePricesUpdated = 0;
+            for (const result of results) {
+              if (result[0]) pricesUpdated++;
+              if (result[1]) salePricesUpdated++;
+            }
+            console.log("FINISHED UPDATING", store.bucket);
+            console.log(pricesUpdated, "prices updated");
+            console.log(salePricesUpdated, "sale prices updated");
+          })
+          .catch((e) => {
+            console.error(e);
+            console.log("ERROR updateing", store.bucket);
+          });
+      });
     });
-  });
+  }
 }
+console.log("Cron schedule started");
+cron.schedule("30 18 * * *", () => {
+  console.log("Updating all stores");
+  updateAllStores();
+});
