@@ -41,7 +41,7 @@ class StoreUpdater {
   writeDataPointIfPriceIsDifferent(item, timestamp) {
     const sku = item["g:id"];
     const price = item["g:price"];
-    const salePrice = item["g:sale_price"];
+    let salePrice = item["g:sale_price"];
 
     if (salePrice >= price) salePrice = null;
 
