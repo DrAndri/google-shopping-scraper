@@ -15,9 +15,6 @@ const url = process.env.INFLUXDB_URL;
 const token = process.env.INFLUXDB_TOKEN;
 const org = process.env.INFLUXDB_ORG;
 
-const inFluxClient = new InfluxDB({ url: url, token: token });
-const inFluxQueryApi = inFluxClient.getQueryApi(org);
-const parser = new XMLParser();
 const limit = pLimit(4);
 
 function downloadFeed(url) {
@@ -31,8 +28,8 @@ function downloadFeed(url) {
       resp.pipe(
         concat(function (buffer) {
           const xmlString = buffer.toString();
-          console.log("finished reading from url");
           if (XMLValidator.validate(xmlString)) {
+            const parser = new XMLParser();
             resolve(parser.parse(xmlString));
           } else reject();
         })
@@ -42,7 +39,10 @@ function downloadFeed(url) {
 }
 
 function updateAllStores() {
+  const inFluxClient = new InfluxDB({ url: url, token: token });
+  const inFluxQueryApi = inFluxClient.getQueryApi(org);
   for (const store of config) {
+    console.log("UPDATING", store.bucket);
     const inFluxWriteApi = inFluxClient.getWriteApi(org, store.bucket);
     const storeUpdater = new StoreUpdater(
       inFluxQueryApi,
@@ -81,8 +81,11 @@ function updateAllStores() {
     });
   }
 }
-console.log("Cron schedule started");
-cron.schedule("30 18 * * *", () => {
+console.log("Running startup update");
+updateAllStores();
+
+cron.schedule("00 12 * * *", () => {
   console.log("Updating all stores");
   updateAllStores();
 });
+console.log("Cron schedule started");

@@ -43,6 +43,8 @@ class StoreUpdater {
     const price = item["g:price"];
     const salePrice = item["g:sale_price"];
 
+    if (salePrice >= price) salePrice = null;
+
     const listUpdate = this.updateAmountIfDifferent(
       sku,
       "price",
