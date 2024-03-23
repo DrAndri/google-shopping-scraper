@@ -3,7 +3,7 @@ import { MongoClient } from 'mongodb';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import cron from 'node-cron';
 
-import StoreUpdater from './StoreUpdaterMongo';
+import StoreUpdater from './StoreUpdater';
 import config from './config.js';
 
 import * as dotenv from 'dotenv';

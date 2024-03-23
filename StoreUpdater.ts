@@ -15,7 +15,7 @@ import {
   type UpsertManyResult
 } from './types';
 
-class StoreUpdaterMongo {
+class StoreUpdater {
   database: Db;
   store: string;
   priceDocuments: MongodbProductPrice[];
@@ -174,4 +174,4 @@ class StoreUpdaterMongo {
   }
 }
 
-export default StoreUpdaterMongo;
+export default StoreUpdater;
