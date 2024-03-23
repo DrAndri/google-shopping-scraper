@@ -7,7 +7,11 @@ import StoreUpdater from './StoreUpdater';
 import config from './config.js';
 
 import * as dotenv from 'dotenv';
-import { StoreUpdateResult, type GoogleMerchantFeed } from './types';
+import {
+  StoreUpdateResult,
+  type GoogleMerchantFeed,
+  StoreConfig
+} from './types';
 
 dotenv.config();
 
@@ -49,16 +53,41 @@ async function downloadFeed(url: URL): Promise<GoogleMerchantFeed> {
 }
 
 async function updateStore(
-  feed: GoogleMerchantFeed,
-  storeUpdater: StoreUpdater,
-  timestamp: number
+  store: StoreConfig,
+  storeUpdater: StoreUpdater
 ): Promise<StoreUpdateResult> {
-  const promises: Promise<void>[] = [];
-  for (const item of feed.rss.channel.item) {
-    promises.push(...storeUpdater.updateProduct(item, timestamp));
-  }
-  await Promise.all(promises);
-  return await storeUpdater.submitAllDocuments();
+  const timestamp = new Date().getTime();
+  return downloadFeed(new URL(store.feedUrl))
+    .then((feed) => {
+      const promises: Promise<void>[] = [];
+      for (const item of feed.rss.channel.item) {
+        promises.push(...storeUpdater.updateProduct(item, timestamp));
+      }
+      return Promise.all(promises);
+    })
+    .then(() => {
+      return storeUpdater.submitAllDocuments();
+    });
+}
+
+function reportResults(results: StoreUpdateResult): void {
+  console.log('FINISHED UPDATING', results.store.storeName);
+  console.log(
+    results.priceChangesResult?.insertedCount ?? 0,
+    ' prices changes inserted'
+  );
+  console.log(
+    results.productMetadataResult?.matchedCount ?? 0,
+    ' productMetadata matched'
+  );
+  console.log(
+    results.productMetadataResult?.upsertedCount ?? 0,
+    ' productMetadata upserted'
+  );
+  console.log(
+    results.productMetadataResult?.modifiedCount ?? 0,
+    ' productMetadata modified'
+  );
 }
 
 function updateAllStores(mongodbUri: string): void {
@@ -68,29 +97,10 @@ function updateAllStores(mongodbUri: string): void {
     .then(() => {
       for (const store of config) {
         console.log('UPDATING', store.storeName);
-        const storeUpdater = new StoreUpdater(mongoClient, store.storeName);
-        const timestamp = new Date().getTime();
-        downloadFeed(new URL(store.feedUrl))
-          .then((feed) => updateStore(feed, storeUpdater, timestamp))
-          .then((results: StoreUpdateResult) => {
-            console.log('FINISHED UPDATING', store.storeName);
-            console.log(
-              results.priceChangesResult?.insertedCount ?? 0,
-              ' prices changes inserted'
-            );
-            console.log(
-              results.productMetadataResult?.matchedCount ?? 0,
-              ' productMetadata matched'
-            );
-            console.log(
-              results.productMetadataResult?.upsertedCount ?? 0,
-              ' productMetadata upserted'
-            );
-            console.log(
-              results.productMetadataResult?.modifiedCount ?? 0,
-              ' productMetadata modified'
-            );
-          })
+        const storeUpdater = new StoreUpdater(mongoClient, store);
+
+        updateStore(store, storeUpdater)
+          .then(reportResults)
           .catch((error) => {
             console.log('Error updating store', error);
           });

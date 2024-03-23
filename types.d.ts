@@ -40,6 +40,7 @@ export interface MongodbProductPrice extends MongodbDocument {
 export interface StoreUpdateResult {
   productMetadataResult: UpsertManyResult | undefined;
   priceChangesResult: InsertManyResult | undefined;
+  store: StoreConfig;
 }
 
 export interface UpsertManyResult {

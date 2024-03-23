@@ -7,6 +7,7 @@ import {
   type InsertManyResult
 } from 'mongodb';
 import {
+  StoreConfig,
   type GoogleMerchantProduct,
   type MongodbDocument,
   type MongodbProductMetadata,
@@ -17,10 +18,10 @@ import {
 
 class StoreUpdater {
   database: Db;
-  store: string;
+  store: StoreConfig;
   priceDocuments: MongodbProductPrice[];
   metadataDocuments: MongodbProductMetadata[];
-  constructor(mongoClient: MongoClient, store: string) {
+  constructor(mongoClient: MongoClient, store: StoreConfig) {
     this.store = store;
     this.priceDocuments = [];
     this.metadataDocuments = [];
@@ -67,7 +68,7 @@ class StoreUpdater {
   ): Promise<boolean> {
     const cursor = this.database
       .collection<MongodbProductPrice>('priceChanges')
-      .find({ sku: product['g:id'], sale_price: salePrice, store: this.store })
+      .find({ sku: product['g:id'], sale_price: salePrice, store: this.store.storeName })
       .sort({ timestamp: -1 })
       .limit(1);
     let price = 0;
@@ -92,7 +93,7 @@ class StoreUpdater {
     const productMetadata: MongodbProductMetadata = {
       sku: product['g:id'],
       lastSeen: timestamp,
-      store: this.store
+      store: this.store.storeName
     };
     if (onSale) {
       productMetadata.salePriceLastSeen = timestamp;
@@ -112,7 +113,7 @@ class StoreUpdater {
       const document: MongodbProductPrice = {
         sku: product['g:id'],
         price: price,
-        store: this.store,
+        store: this.store.storeName,
         sale_price: salePrice,
         timestamp
       };
@@ -123,7 +124,8 @@ class StoreUpdater {
   async submitAllDocuments(): Promise<StoreUpdateResult> {
     const results: StoreUpdateResult = {
       productMetadataResult: undefined,
-      priceChangesResult: undefined
+      priceChangesResult: undefined,
+      store: this.store
     };
     if (this.priceDocuments.length > 0) {
       results.priceChangesResult = await this.insertDocumentArray(
