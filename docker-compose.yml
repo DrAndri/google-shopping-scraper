@@ -6,6 +6,17 @@ services:
       dockerfile: Dockerfile
     environment:
       - MONGODB_URI=${MONGODB_URI}
+
+  price-api:
+    container_name: price-api
+    build:
+      context: ../google-shopping-history
+      dockerfile: Dockerfile
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+    ports:
+      - 3000:3000
+
   mongo:
     image: mongo
     restart: always

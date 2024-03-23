@@ -8,7 +8,7 @@ import StoreUpdater from "./StoreUpdaterMongo";
 import config from "./config.js";
 
 import * as dotenv from "dotenv";
-import { Env, GoogleMerchantFeed } from "./types";
+import { Env, GoogleMerchantFeed, GoogleMerchantProduct } from "./types";
 
 dotenv.config();
 
@@ -57,18 +57,33 @@ function updateAllStores() {
     downloadFeed(new URL(store.feedUrl)).then((jsonObj) => {
       let promises: Promise<any>[] = [];
       for (const item of jsonObj.rss.channel.item) {
-        promises = promises.concat(storeUpdater.updateProduct(item, timestamp));
+        const product: GoogleMerchantProduct = {
+          "g:id": item["g:id"].toString(),
+          "g:price": item["g:price"],
+          "g:sale_price": item["g:sale_price"],
+        };
+        promises = promises.concat(
+          storeUpdater.updateProduct(product, timestamp)
+        );
       }
       Promise.all(promises).then(async () => {
         const results = await storeUpdater.submitAllDocuments();
         console.log("FINISHED UPDATING", store.storeName);
         console.log(
-          results.priceChangeResult?.insertedCount || 0,
+          results.priceChangesResult?.insertedCount || 0,
           " prices changes inserted"
         );
         console.log(
-          results.productInfoResult?.modifiedCount || 0,
-          " product infos modified"
+          results.productMetadataResult?.matchedCount || 0,
+          " productMetadata matched"
+        );
+        console.log(
+          results.productMetadataResult?.upsertedCount || 0,
+          " productMetadata upserted"
+        );
+        console.log(
+          results.productMetadataResult?.modifiedCount || 0,
+          " productMetadata modified"
         );
       });
     });

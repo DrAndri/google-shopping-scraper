@@ -9,19 +9,21 @@ import {
 import {
   GoogleMerchantProduct,
   MongodbDocument,
-  MongodbProductInfo,
+  MongodbProductMetadata,
   MongodbProductPrice,
+  StoreUpdateResult,
+  UpsertManyResult,
 } from "./types";
 
 class StoreUpdaterMongo {
   database: Db;
   store: string;
   priceDocuments: MongodbProductPrice[];
-  productDocuments: MongodbProductInfo[];
+  metadataDocuments: MongodbProductMetadata[];
   constructor(mongoClient: MongoClient, store: string) {
     this.store = store;
     this.priceDocuments = [];
-    this.productDocuments = [];
+    this.metadataDocuments = [];
     this.database = mongoClient.db("google-shopping-scraper");
   }
   isNumber(val: any) {
@@ -30,20 +32,21 @@ class StoreUpdaterMongo {
 
   updateProduct(product: GoogleMerchantProduct, timestamp: number) {
     let promises = [];
-    const document = this.upsertProductInfo(product, timestamp);
+    const productMetadata = this.getProductMetadata(product, timestamp);
+    this.metadataDocuments.push(productMetadata);
     promises.push(
       new Promise<void>((resolve, reject) => {
         this.hasPriceChanged(product, false).then((changed) => {
-          if (changed) this.insertPriceChange(product, false, timestamp);
+          if (changed) this.addPriceChange(product, false, timestamp);
           resolve();
         });
       })
     );
-    if (document.on_sale) {
+    if (productMetadata.on_sale) {
       promises.push(
         new Promise<void>((resolve, reject) => {
           this.hasPriceChanged(product, true).then((changed) => {
-            if (changed) this.insertPriceChange(product, true, timestamp);
+            if (changed) this.addPriceChange(product, true, timestamp);
             resolve();
           });
         })
@@ -82,21 +85,20 @@ class StoreUpdaterMongo {
     }
   }
 
-  upsertProductInfo(
+  getProductMetadata(
     product: GoogleMerchantProduct,
     timestamp: number
-  ): MongodbProductInfo {
-    const productInfo: MongodbProductInfo = {
+  ): MongodbProductMetadata {
+    const productMetadata: MongodbProductMetadata = {
       sku: product["g:id"],
       lastSeen: timestamp,
-      on_sale: this.isOnSale(product),
+      salePriceLastSeen: this.isOnSale(product) ? timestamp : undefined,
       store: this.store,
     };
-    this.productDocuments.push(productInfo);
-    return productInfo;
+    return productMetadata;
   }
 
-  insertPriceChange(
+  addPriceChange(
     product: GoogleMerchantProduct,
     sale_price: boolean,
     timestamp: number
@@ -118,33 +120,47 @@ class StoreUpdaterMongo {
   }
 
   async submitAllDocuments() {
-    let results: {
-      productInfoResult: UpdateResult | undefined;
-      priceChangeResult: InsertManyResult | undefined;
-    } = { productInfoResult: undefined, priceChangeResult: undefined };
+    let results: StoreUpdateResult = {
+      productMetadataResult: undefined,
+      priceChangesResult: undefined,
+    };
     if (this.priceDocuments.length > 0)
-      results.priceChangeResult = await this.insertDocumentArray(
+      results.priceChangesResult = await this.insertDocumentArray(
         this.priceDocuments,
         this.database.collection("priceChanges")
       );
-    if (this.productDocuments.length > 0)
-      results.productInfoResult = await this.upsertDocumentArray(
-        this.productDocuments,
-        this.database.collection("productInfo")
+    if (this.metadataDocuments.length > 0)
+      results.productMetadataResult = await this.upsertProductMetadata(
+        this.metadataDocuments,
+        this.database.collection("productMetadata")
       );
     return results;
   }
 
-  async upsertDocumentArray(
+  async upsertProductMetadata(
     documents: MongodbDocument[],
     collection: Collection<Document>
   ) {
+    let promises: Promise<UpdateResult>[] = [];
     const options = { upsert: true };
     for (const document of documents) {
       const filter = { sku: document.sku, store: document.store };
       const update = { $set: document };
-      return await collection.updateOne(filter, update, options);
+      promises.push(collection.updateOne(filter, update, options));
     }
+    return Promise.all(promises).then((results) => {
+      let result: UpsertManyResult = {
+        matchedCount: 0,
+        modifiedCount: 0,
+        upsertedCount: 0,
+      };
+      for (const oneResult of results) {
+        result.matchedCount += oneResult.matchedCount;
+        result.modifiedCount += oneResult.modifiedCount;
+        result.upsertedCount += oneResult.upsertedCount;
+      }
+      return result;
+    });
   }
 
   async insertDocumentArray(

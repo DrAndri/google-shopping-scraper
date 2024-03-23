@@ -26,12 +26,11 @@ export interface GoogleMerchantProduct {
 export interface MongodbDocument extends Document {
   sku: string;
   store: string;
-  [key: string]: any;
 }
 
-export interface MongodbProductInfo extends MongodbDocument {
+export interface MongodbProductMetadata extends MongodbDocument {
   sku: string;
-  on_sale: boolean;
+  salePriceLastSeen: number | undefined;
   lastSeen: number;
 }
 
@@ -40,4 +39,15 @@ export interface MongodbProductPrice extends MongodbDocument {
   sale_price: boolean;
   price: number;
   timestamp: number;
+}
+
+export interface StoreUpdateResult {
+  productMetadataResult: UpsertManyResult | undefined;
+  priceChangesResult: InsertManyResult | undefined;
+}
+
+export interface UpsertManyResult {
+  matchedCount: number;
+  modifiedCount: number;
+  upsertedCount: number;
 }
