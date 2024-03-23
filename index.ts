@@ -114,6 +114,7 @@ if (MONGODB_URI === undefined) {
   console.log('MONGODB_URI not set');
 } else {
   console.log('Running startup update');
+  initMongodbCollections(MONGODB_URI);
   updateAllStores(MONGODB_URI);
 
   cron.schedule('00 12 * * *', () => {
@@ -121,4 +122,24 @@ if (MONGODB_URI === undefined) {
     updateAllStores(MONGODB_URI);
   });
   console.log('Cron schedule started');
+}
+function initMongodbCollections(mongodbUri: string): void {
+  const mongoClient = new MongoClient(mongodbUri);
+  mongoClient
+    .connect()
+    .then(() => {
+      return Promise.all([
+        mongoClient
+          .db('google-shopping-scraper')
+          .collection('priceChanges')
+          .createIndex({ store: 1, sku: 1 }),
+        mongoClient
+          .db('google-shopping-scraper')
+          .collection('productMetadata')
+          .createIndex({ store: 1, sku: 1 })
+      ]);
+    })
+    .catch((error) => {
+      console.log('Error connecting to mongodb', error);
+    });
 }
