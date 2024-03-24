@@ -10,6 +10,7 @@ services:
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - IMPORT_INFLUXDB=${IMPORT_INFLUXDB}
+      - RUN_STARTUP_UPDATE=${RUN_STARTUP_UPDATE}
 
   price-api:
     container_name: price-api

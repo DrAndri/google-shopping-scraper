@@ -32,6 +32,7 @@ class StoreUpdater {
     product: GoogleMerchantProduct,
     timestamp: number
   ): Promise<void>[] {
+    product = this.sanitizeProduct(product);
     const onSale = this.isOnSale(product);
     const promises = [];
     const productMetadata = this.getProductMetadata(product, onSale, timestamp);
@@ -50,10 +51,20 @@ class StoreUpdater {
     }
     return promises;
   }
+  sanitizeProduct(product: GoogleMerchantProduct): GoogleMerchantProduct {
+    product['g:id'] = String(product['g:id']);
+    product['g:gtin'] = String(product['g:gtin']);
+    product['g:brand'] = String(product['g:brand']);
+    product['g:title'] = String(product['g:title']);
+    if (typeof product['g:price'] !== 'number')
+      throw new Error('price is not a number');
+    return product;
+  }
 
   isOnSale(product: GoogleMerchantProduct): boolean {
     return (
       product['g:sale_price'] !== undefined &&
+      typeof product['g:sale_price'] === 'number' &&
       product['g:sale_price'] < product['g:price']
     );
   }
