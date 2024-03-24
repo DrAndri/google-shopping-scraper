@@ -1,4 +1,4 @@
-version: "3"
+version: '3'
 services:
   price-scraper:
     container_name: price-scraper
@@ -6,6 +6,10 @@ services:
       dockerfile: Dockerfile
     environment:
       - MONGODB_URI=${MONGODB_URI}
+      - INFLUXDB_URL=${INFLUXDB_URL}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - IMPORT_INFLUXDB=${IMPORT_INFLUXDB}
 
   price-api:
     container_name: price-api

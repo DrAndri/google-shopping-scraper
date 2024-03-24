@@ -11,6 +11,7 @@ import {
   type GoogleMerchantFeed,
   StoreConfig
 } from './types.js';
+import InfluxImporter from './InfluxImporter.js';
 
 dotenv.config();
 
@@ -99,22 +100,10 @@ function updateAllStores(mongodbUri: string): void {
           });
       }
     })
+    .then(() => mongoClient.close())
     .catch((error) => {
       console.log('Error connecting to mongodb', error);
     });
-}
-if (MONGODB_URI === undefined) {
-  console.log('MONGODB_URI not set');
-} else {
-  console.log('Running startup update');
-  initMongodbCollections(MONGODB_URI);
-  updateAllStores(MONGODB_URI);
-
-  cron.schedule('00 12 * * *', () => {
-    console.log('Updating all stores');
-    updateAllStores(MONGODB_URI);
-  });
-  console.log('Cron schedule started');
 }
 function initMongodbCollections(mongodbUri: string): void {
   const mongoClient = new MongoClient(mongodbUri);
@@ -128,7 +117,48 @@ function initMongodbCollections(mongodbUri: string): void {
         db.collection('stores').createIndex({ storeName: 1 })
       ]);
     })
+    .then(() => mongoClient.close())
     .catch((error) => {
       console.log('Error initializing mongodb', error);
     });
+}
+
+if (MONGODB_URI === undefined) {
+  console.log('MONGODB_URI not set');
+} else {
+  console.log('Running startup update');
+  initMongodbCollections(MONGODB_URI);
+  updateAllStores(MONGODB_URI);
+
+  cron.schedule('00 12 * * *', () => {
+    console.log('Updating all stores');
+    updateAllStores(MONGODB_URI);
+  });
+  console.log('Cron schedule started');
+
+  if (process.env.IMPORT_INFLUXDB === 'true') {
+    console.log('Importing from influx');
+    const mongoClient = new MongoClient(MONGODB_URI);
+    mongoClient
+      .connect()
+      .then(() => getAllStores(mongoClient))
+      .then((stores) => {
+        const promises = [];
+        for (const store of stores) {
+          const influxImporter = new InfluxImporter(
+            mongoClient.db('google-shopping-scraper'),
+            store
+          );
+          promises.push(
+            influxImporter
+              .getAllPricePointsFromInfluxdb()
+              .then((priceChanges) =>
+                influxImporter.insertPricePointsToMongo(priceChanges)
+              )
+          );
+        }
+        return Promise.all(promises).then(() => mongoClient.close());
+      })
+      .catch((error) => console.log('Error importing from influx', error));
+  }
 }
