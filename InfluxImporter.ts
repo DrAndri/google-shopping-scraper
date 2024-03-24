@@ -40,7 +40,7 @@ class InfluxImporter {
             sku: sku,
             store: store.name,
             // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-            timestamp: new Date(o._time).getTime(),
+            timestamp: Math.floor(new Date(o._time).getTime() / 1000),
             sale_price: o._measurement === 'sale_price'
           });
         },
@@ -66,12 +66,9 @@ class InfluxImporter {
         .then((metadata) => {
           if (!metadata) {
             const onlySalePrices = value.filter((price) => price.sale_price);
-            const timestamp = Math.floor(
-              value[value.length - 1].timestamp / 1000
-            );
             const doc: MongodbProductMetadata = {
               sku: key,
-              lastSeen: timestamp,
+              lastSeen: value[value.length - 1].timestamp,
               store: this.store.name
             };
             if (onlySalePrices.length > 0) {
