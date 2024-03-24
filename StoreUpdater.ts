@@ -1,10 +1,4 @@
-import {
-  type Collection,
-  type Db,
-  type Document,
-  type UpdateResult,
-  type InsertManyResult
-} from 'mongodb';
+import { type Collection, type Db, type UpdateResult } from 'mongodb';
 import {
   StoreConfig,
   type GoogleMerchantProduct,
@@ -15,7 +9,8 @@ import {
 } from './types.js';
 
 class StoreUpdater {
-  database: Db;
+  pricesCollection: Collection<MongodbProductPrice>;
+  metadataCollection: Collection<MongodbProductMetadata>;
   store: StoreConfig;
   priceDocuments: MongodbProductPrice[];
   metadataDocuments: MongodbProductMetadata[];
@@ -23,7 +18,10 @@ class StoreUpdater {
     this.store = store;
     this.priceDocuments = [];
     this.metadataDocuments = [];
-    this.database = mongodb;
+    this.pricesCollection =
+      mongodb.collection<MongodbProductPrice>('priceChanges');
+    this.metadataCollection =
+      mongodb.collection<MongodbProductMetadata>('productMetadata');
   }
 
   isNumber(val: unknown): boolean {
@@ -64,8 +62,7 @@ class StoreUpdater {
     product: GoogleMerchantProduct,
     salePrice: boolean
   ): Promise<boolean> {
-    const cursor = this.database
-      .collection<MongodbProductPrice>('priceChanges')
+    const cursor = this.pricesCollection
       .find(
         {
           sku: product['g:id'],
@@ -140,15 +137,14 @@ class StoreUpdater {
       store: this.store
     };
     if (this.priceDocuments.length > 0) {
-      results.priceChangesResult = await this.insertProductPrices(
-        this.priceDocuments,
-        this.database.collection('priceChanges')
+      results.priceChangesResult = await this.pricesCollection.insertMany(
+        this.priceDocuments
       );
     }
     if (this.metadataDocuments.length > 0) {
       results.productMetadataResult = await this.upsertProductMetadata(
         this.metadataDocuments,
-        this.database.collection('productMetadata')
+        this.metadataCollection
       );
     }
     return results;
@@ -156,7 +152,7 @@ class StoreUpdater {
 
   async upsertProductMetadata(
     documents: MongodbProductMetadata[],
-    collection: Collection<Document>
+    collection: Collection<MongodbProductMetadata>
   ): Promise<UpsertManyResult> {
     const promises: Promise<UpdateResult>[] = [];
     const options = { upsert: true };
@@ -178,13 +174,6 @@ class StoreUpdater {
       }
       return result;
     });
-  }
-
-  async insertProductPrices(
-    documents: MongodbProductPrice[],
-    collection: Collection<Document>
-  ): Promise<InsertManyResult> {
-    return await collection.insertMany(documents);
   }
 }
 
