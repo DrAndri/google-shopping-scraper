@@ -44,7 +44,7 @@ async function updateStore(
   const timestamp = new Date().getTime();
   return downloadFeed(new URL(store.feedUrl))
     .then((feed) => {
-      const promises: Promise<void>[] = [];
+      const promises = [];
       for (const item of feed.rss.channel.item) {
         promises.push(...storeUpdater.updateProduct(item, timestamp));
       }
