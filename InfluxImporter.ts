@@ -36,12 +36,13 @@ class InfluxImporter {
           const price = parseInt(o._value);
           if (priceChanges[sku] === undefined) priceChanges[sku] = [];
           priceChanges[sku].push({
-            price: price,
             sku: sku,
+            price: price,
             store: store.name,
+            salePrice: o._measurement === 'sale_price',
             // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-            timestamp: Math.floor(new Date(o._time).getTime() / 1000),
-            sale_price: o._measurement === 'sale_price'
+            start: Math.floor(new Date(o._time).getTime() / 1000),
+            end: 0
           });
         },
         error(error) {
@@ -60,25 +61,38 @@ class InfluxImporter {
   ) {
     const promises = [];
     for (const [key, value] of Object.entries(pricesChanges)) {
+      const onlySalePrices = value.filter((price) => price.salePrice === true);
+      const onlyPrices = value.filter((price) => price.salePrice === false);
       const promise = this.mongodb
         .collection<MongodbProductMetadata>('productMetadata')
         .findOne({ sku: key, store: this.store.name })
         .then((metadata) => {
           if (!metadata) {
-            const onlySalePrices = value.filter((price) => price.sale_price);
             const doc: MongodbProductMetadata = {
               sku: key,
-              lastSeen: value[value.length - 1].timestamp,
               store: this.store.name
             };
-            if (onlySalePrices.length > 0) {
-              doc.salePriceLastSeen =
-                onlySalePrices[onlySalePrices.length - 1].timestamp;
-            }
             return this.mongodb.collection('productMetadata').insertOne(doc);
           }
         })
-        .then(() => this.mongodb.collection('priceChanges').insertMany(value));
+        .then(() => {
+          for (let i = 0; i < onlyPrices.length; i++) {
+            if (i < onlyPrices.length - 1)
+              onlyPrices[i].end = onlyPrices[i + 1].start;
+            else onlyPrices[i].end = 1711380463;
+          }
+          return this.mongodb.collection('priceChanges').insertMany(onlyPrices);
+        })
+        .then(() => {
+          for (let i = 0; i < onlySalePrices.length; i++) {
+            if (i < onlySalePrices.length - 1)
+              onlySalePrices[i].end = onlySalePrices[i + 1].start;
+            else onlySalePrices[i].end = 1711380463;
+          }
+          return this.mongodb
+            .collection('priceChanges')
+            .insertMany(onlySalePrices);
+        });
       promises.push(promise);
     }
 

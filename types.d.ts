@@ -1,4 +1,4 @@
-import { type Document, type InsertManyResult } from 'mongodb';
+import { ObjectId, type Document, type InsertManyResult } from 'mongodb';
 
 export interface GoogleMerchantFeed {
   rss: {
@@ -25,24 +25,25 @@ export interface StoreConfig extends Document {
 export interface MongodbProductMetadata extends Document {
   sku: string;
   store: string;
-  lastSeen: number;
-  salePriceLastSeen?: number;
   name?: string;
   brand?: string;
   ean?: string;
 }
 
-export interface MongodbProductPrice extends MongodbDocument {
+export interface MongodbProductPrice extends Document {
+  _id?: ObjectId;
   sku: string;
   store: string;
-  sale_price: boolean;
+  salePrice: boolean;
   price: number;
-  timestamp: number;
+  start: number;
+  end: number;
 }
 
 export interface StoreUpdateResult {
-  productMetadataResult: UpsertManyResult | undefined;
-  priceChangesResult: InsertManyResult | undefined;
+  productMetadataUpsert: UpsertManyResult | undefined;
+  newPrices: InsertManyResult | undefined;
+  priceUpdate: UpsertManyResult | undefined;
   store: StoreConfig;
 }
 

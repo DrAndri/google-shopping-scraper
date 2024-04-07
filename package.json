@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@influxdata/influxdb-client": "^1.33.0",
-    "@types/node": "^20.11.30",
+    "@types/node": "^20.12.5",
     "dotenv": "^16.0.3",
     "fast-xml-parser": "^4.0.12",
     "mongodb": "^6.5.0",
@@ -23,10 +23,10 @@
   },
   "devDependencies": {
     "@types/node-cron": "^3.0.11",
-    "eslint": "^8.57.0",
+    "eslint": "^9.0.0",
     "prettier": "^3.2.5",
-    "typescript": "^5.4.3",
-    "typescript-eslint": "^7.4.0"
+    "typescript": "^5.4.4",
+    "typescript-eslint": "^7.5.0"
   },
   "repository": "https://github.com/DrAndri/google-shopping-scraper.git"
 }

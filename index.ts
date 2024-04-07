@@ -57,20 +57,18 @@ async function updateStore(
 
 function reportResults(results: StoreUpdateResult): void {
   console.log('FINISHED UPDATING', results.store.name);
+  console.log(results.priceUpdate?.modifiedCount ?? 0, ' prices modified');
+  console.log(results.newPrices?.insertedCount ?? 0, ' prices inserted');
   console.log(
-    results.priceChangesResult?.insertedCount ?? 0,
-    ' prices changes inserted'
-  );
-  console.log(
-    results.productMetadataResult?.matchedCount ?? 0,
+    results.productMetadataUpsert?.matchedCount ?? 0,
     ' productMetadata matched'
   );
   console.log(
-    results.productMetadataResult?.upsertedCount ?? 0,
+    results.productMetadataUpsert?.upsertedCount ?? 0,
     ' productMetadata upserted'
   );
   console.log(
-    results.productMetadataResult?.modifiedCount ?? 0,
+    results.productMetadataUpsert?.modifiedCount ?? 0,
     ' productMetadata modified'
   );
 }
