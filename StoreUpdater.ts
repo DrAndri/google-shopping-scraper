@@ -53,7 +53,7 @@ class StoreUpdater {
   ) {
     const price = await this.getLastPrice(product, salePrice);
     if (price !== null) {
-      if (this.isPriceDifferent(price, product)) {
+      if (this.isPriceDifferent(price, product, salePrice)) {
         this.addNewPrice(product, salePrice, timestamp);
       } else {
         this.updatePriceTimestamp(price, timestamp);
@@ -75,11 +75,11 @@ class StoreUpdater {
 
   isPriceDifferent(
     price: MongodbProductPrice,
-    product: GoogleMerchantProduct
+    product: GoogleMerchantProduct,
+    salePrice: boolean
   ): boolean {
     return (
-      price.price !==
-      (price.salePrice ? product['g:sale_price'] : product['g:price'])
+      price.price !== (salePrice ? product['g:sale_price'] : product['g:price'])
     );
   }
 
@@ -101,7 +101,7 @@ class StoreUpdater {
         salePrice: salePrice,
         store: this.store.name
       })
-      .sort({ priceEnd: -1 })
+      .sort({ end: -1 })
       .limit(1);
     const doc = await cursor.next();
     return Promise.resolve(doc);
