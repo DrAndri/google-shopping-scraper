@@ -42,11 +42,14 @@ async function updateStore(
   storeUpdater: StoreUpdater
 ): Promise<StoreUpdateResult> {
   const timestamp = Math.floor(new Date().getTime() / 1000);
+  const thresholdTimestamp = timestamp - 172800; //48 hours
   return downloadFeed(new URL(store.feedUrl))
     .then((feed) => {
       const promises = [];
       for (const item of feed.rss.channel.item) {
-        promises.push(...storeUpdater.updateProduct(item, timestamp));
+        promises.push(
+          ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
+        );
       }
       return Promise.all(promises);
     })

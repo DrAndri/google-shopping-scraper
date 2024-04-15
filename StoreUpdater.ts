@@ -32,16 +32,21 @@ class StoreUpdater {
 
   updateProduct(
     product: GoogleMerchantProduct,
-    timestamp: number
+    timestamp: number,
+    thresholdTimestamp: number
   ): Promise<void>[] {
     product = this.sanitizeProduct(product);
     const onSale = this.isOnSale(product);
     const promises = [];
     const productMetadata = this.getProductMetadata(product);
     this.metadataDocuments.push(productMetadata);
-    promises.push(this.addPriceUpsert(product, false, timestamp));
+    promises.push(
+      this.addPriceUpsert(product, false, timestamp, thresholdTimestamp)
+    );
     if (onSale) {
-      promises.push(this.addPriceUpsert(product, true, timestamp));
+      promises.push(
+        this.addPriceUpsert(product, true, timestamp, thresholdTimestamp)
+      );
     }
     return promises;
   }
@@ -49,11 +54,15 @@ class StoreUpdater {
   async addPriceUpsert(
     product: GoogleMerchantProduct,
     salePrice: boolean,
-    timestamp: number
+    timestamp: number,
+    thresholdTimestamp: number
   ) {
     const price = await this.getLastPrice(product, salePrice);
     if (price !== null) {
-      if (this.isPriceDifferent(price, product, salePrice)) {
+      if (
+        this.isPriceDifferent(price, product, salePrice) &&
+        thresholdTimestamp > price.end
+      ) {
         this.addNewPrice(product, salePrice, timestamp);
       } else {
         this.updatePriceTimestamp(price, timestamp);
