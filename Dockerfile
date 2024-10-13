@@ -12,7 +12,7 @@ COPY . .
 
 RUN yarn build
 
-FROM node:slim
+FROM node:bullseye
 
 ENV NODE_ENV production
 USER node
@@ -24,6 +24,10 @@ WORKDIR /usr/src/app
 COPY package.json yarn.lock ./
 
 RUN yarn install --production --frozen-lockfile
+RUN npx playwright install
+USER root
+RUN npx playwright install --with-deps
+USER node
 
 COPY --from=builder /usr/src/app/dist ./dist
 

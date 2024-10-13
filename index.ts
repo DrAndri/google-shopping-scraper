@@ -2,6 +2,7 @@ import { Db, MongoClient } from 'mongodb';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import cron from 'node-cron';
 import fetch from 'node-fetch';
+import { PlaywrightCrawler } from 'crawlee';
 
 import StoreUpdater from './StoreUpdater.js';
 
@@ -83,6 +84,22 @@ async function getAllStores(db: Db): Promise<StoreConfig[]> {
   return await cursor.toArray();
 }
 
+function scrapeAllStores(mongodb: Db): Promise<void> {
+  return getAllStores(mongodb).then(async (stores) => {
+    const crawler = new PlaywrightCrawler({
+      async requestHandler({ request, enqueueLinks, log }) {
+        log.info(request.url);
+        // Add all links from page to RequestQueue
+        await enqueueLinks();
+      },
+      maxRequestsPerCrawl: 10 // Limitation for only 10 requests (do not use if you want to crawl all links)
+    });
+
+    // Run the crawler with initial request
+    await crawler.run(['https://tl.is']);
+  });
+}
+
 function updateAllStores(mongodb: Db): Promise<void> {
   return getAllStores(mongodb).then((stores) => {
     for (const store of stores) {
@@ -140,7 +157,8 @@ if (process.env.IMPORT_INFLUXDB === 'true') {
   await initMongodbCollections(mongoDb);
   if (process.env.RUN_STARTUP_UPDATE === 'true') {
     console.log('Running startup update');
-    updateAllStores(mongoDb).catch((error) => console.log(error));
+    //updateAllStores(mongoDb).catch((error) => console.log(error));
+    scrapeAllStores(mongoDb).catch((error) => console.log(error));
   }
 
   cron.schedule('00 12 * * *', () => {
