@@ -8,7 +8,7 @@ import {
   type UpsertManyResult
 } from './types.js';
 
-class StoreUpdater {
+export default class StoreUpdater {
   pricesCollection: Collection<MongodbProductPrice>;
   metadataCollection: Collection<MongodbProductMetadata>;
   store: StoreConfig;
@@ -236,5 +236,3 @@ class StoreUpdater {
     });
   }
 }
-
-export default StoreUpdater;

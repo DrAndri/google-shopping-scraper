@@ -9,9 +9,10 @@ import * as dotenv from 'dotenv';
 import {
   StoreUpdateResult,
   type GoogleMerchantFeed,
-  StoreConfig
+  StoreConfig,
+  WebScraperOptions
 } from './types.js';
-import InfluxImporter from './InfluxImporter.js';
+import WebshopScraper from './WebshopScraper.js';
 
 dotenv.config();
 
@@ -43,19 +44,33 @@ async function updateStore(
 ): Promise<StoreUpdateResult> {
   const timestamp = Math.floor(new Date().getTime() / 1000);
   const thresholdTimestamp = timestamp - 172800; //48 hours
-  return downloadFeed(new URL(store.feedUrl))
-    .then((feed) => {
-      const promises = [];
-      for (const item of feed.rss.channel.item) {
-        promises.push(
-          ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
-        );
-      }
-      return Promise.all(promises);
-    })
-    .then(() => {
+  if (store.type === 'feed') {
+    return downloadFeed(new URL(store.feedUrl))
+      .then((feed) => {
+        const promises = [];
+        for (const item of feed.rss.channel.item) {
+          promises.push(
+            ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
+          );
+        }
+        return Promise.all(promises);
+      })
+      .then(() => {
+        return storeUpdater.submitAllDocuments();
+      });
+  } else if (store.type === 'scraper') {
+    const scraper = new WebshopScraper(store.options);
+    const products = await scraper.scrapeSite();
+    const promises = [];
+    for (const item of products) {
+      promises.push(
+        ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
+      );
+    }
+    return Promise.all(promises).then(() => {
       return storeUpdater.submitAllDocuments();
     });
+  } else return Promise.reject();
 }
 
 function reportResults(results: StoreUpdateResult): void {
@@ -79,14 +94,19 @@ function reportResults(results: StoreUpdateResult): void {
 async function getAllStores(db: Db): Promise<StoreConfig[]> {
   const cursor = db
     .collection<StoreConfig>('stores')
-    .find({}, { projection: { _id: 0, feedUrl: 1, name: 1 } });
+    .find(
+      {},
+      { projection: { _id: 0, feedUrl: 1, name: 1, options: 1, type: 1 } }
+    );
   return await cursor.toArray();
 }
 
 function updateAllStores(mongodb: Db): Promise<void> {
   return getAllStores(mongodb).then((stores) => {
+    console.log(stores);
     for (const store of stores) {
       console.log('UPDATING', store.name);
+
       const storeUpdater = new StoreUpdater(mongodb, store);
 
       updateStore(store, storeUpdater)
@@ -101,7 +121,7 @@ function initMongodbCollections(db: Db): Promise<void> {
   return Promise.all([
     db.collection('priceChanges').createIndex({ store: 1, sku: 1 }),
     db.collection('productMetadata').createIndex({ store: 1, sku: 1 }),
-    db.collection('stores').createIndex({ storeName: 1 })
+    db.collection('stores').createIndex({ name: 1 })
   ]).then();
 }
 
@@ -115,39 +135,17 @@ function getMongodb(): Promise<Db> {
     .then(() => mongoClient.db('google-shopping-scraper'));
 }
 
-if (process.env.IMPORT_INFLUXDB === 'true') {
-  console.log('Importing from influx');
-  const mongodb = await getMongodb();
-  getAllStores(mongodb)
-    .then((stores) => {
-      const promises = [];
-      for (const store of stores) {
-        const influxImporter = new InfluxImporter(mongodb, store);
-        promises.push(
-          influxImporter
-            .getAllPricePointsFromInfluxdb()
-            .then((priceChanges) =>
-              influxImporter.insertPricePointsToMongo(priceChanges)
-            )
-        );
-      }
-      return Promise.all(promises);
-    })
-    .then(() => console.log('Finished importing'))
-    .catch((error) => console.log('Error importing from influx', error));
-} else {
-  const mongoDb = await getMongodb();
-  await initMongodbCollections(mongoDb);
-  if (process.env.RUN_STARTUP_UPDATE === 'true') {
-    console.log('Running startup update');
-    updateAllStores(mongoDb).catch((error) => console.log(error));
-  }
-
-  cron.schedule('00 12 * * *', () => {
-    console.log('Updating all stores');
-    getMongodb()
-      .then(updateAllStores)
-      .catch((error) => console.log(error));
-  });
-  console.log('Cron schedule started');
+const mongoDb = await getMongodb();
+await initMongodbCollections(mongoDb);
+if (process.env.RUN_STARTUP_UPDATE === 'true') {
+  console.log('Running startup update');
+  updateAllStores(mongoDb).catch((error) => console.log(error));
 }
+
+cron.schedule('00 12 * * *', () => {
+  console.log('Updating all stores');
+  getMongodb()
+    .then(updateAllStores)
+    .catch((error) => console.log(error));
+});
+console.log('Cron schedule started');

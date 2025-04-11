@@ -5,10 +5,6 @@ services:
       dockerfile: Dockerfile
     environment:
       - MONGODB_URI=${MONGODB_URI}
-      - INFLUXDB_URL=${INFLUXDB_URL}
-      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
-      - INFLUXDB_ORG=${INFLUXDB_ORG}
-      - IMPORT_INFLUXDB=${IMPORT_INFLUXDB}
       - RUN_STARTUP_UPDATE=${RUN_STARTUP_UPDATE}
 
   price-api:

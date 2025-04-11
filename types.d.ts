@@ -12,14 +12,20 @@ export interface GoogleMerchantProduct {
   'g:id': string;
   'g:price': number;
   'g:title': string;
-  'g:brand': string;
-  'g:gtin': string;
+  'g:brand'?: string;
+  'g:gtin'?: string;
   'g:sale_price'?: number;
+}
+enum StoreType {
+  scraper = 'scraper',
+  feed = 'feed'
 }
 
 export interface StoreConfig extends Document {
   feedUrl: string;
   name: string;
+  type: StoreType;
+  options: WebScraperOptions;
 }
 
 export interface MongodbProductMetadata extends Document {
@@ -51,4 +57,21 @@ export interface UpsertManyResult {
   matchedCount: number;
   modifiedCount: number;
   upsertedCount: number;
+}
+
+export interface WebScraperOptions {
+  catalogSearchUrl: string;
+  productItemClasses: ProductItemClasses;
+  pageParameter: string;
+  totalProductsClass: string;
+}
+export interface ProductItemClasses {
+  itemClass: string;
+  oldPriceClass: string;
+  listPriceClass: string;
+  nameClass: string;
+  skuClass: string;
+  imageClass: string;
+  totalProductsClass: string;
+  brandClass: string;
 }
