@@ -1,7 +1,7 @@
 import { type Collection, type Db, type UpdateResult } from 'mongodb';
 import {
-  StoreConfig,
-  type GoogleMerchantProduct,
+  type StoreConfig,
+  type ProductSnapshot,
   type MongodbProductMetadata,
   type MongodbProductPrice,
   type StoreUpdateResult,
@@ -31,7 +31,7 @@ export default class StoreUpdater {
   }
 
   updateProduct(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     timestamp: number,
     thresholdTimestamp: number
   ): Promise<void>[] {
@@ -52,7 +52,7 @@ export default class StoreUpdater {
   }
 
   async addPriceUpsert(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean,
     timestamp: number,
     thresholdTimestamp: number
@@ -72,41 +72,41 @@ export default class StoreUpdater {
     }
   }
 
-  sanitizeProduct(product: GoogleMerchantProduct): GoogleMerchantProduct {
-    product['g:id'] = String(product['g:id']);
-    product['g:gtin'] = String(product['g:gtin']);
-    product['g:brand'] = String(product['g:brand']);
-    product['g:title'] = String(product['g:title']);
-    if (typeof product['g:price'] !== 'number')
+  sanitizeProduct(product: ProductSnapshot): ProductSnapshot {
+    product.id = String(product.id);
+    product.gtin = String(product.gtin);
+    product.brand = String(product.brand);
+    product.title = String(product.title);
+    if (typeof product.price !== 'number')
       throw new Error('price is not a number');
     return product;
   }
 
   isPriceDifferent(
     price: MongodbProductPrice,
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean
   ): boolean {
     return (
-      price.price !== (salePrice ? product['g:sale_price'] : product['g:price'])
+      price.price !== (salePrice ? product.sale_price : product.price)
     );
   }
 
-  isOnSale(product: GoogleMerchantProduct): boolean {
+  isOnSale(product: ProductSnapshot): boolean {
     return (
-      product['g:sale_price'] !== undefined &&
-      typeof product['g:sale_price'] === 'number' &&
-      product['g:sale_price'] < product['g:price']
+      product.sale_price !== undefined &&
+      typeof product.sale_price === 'number' &&
+      product.sale_price < product.price
     );
   }
 
   async getLastPrice(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean
   ): Promise<MongodbProductPrice | null> {
     const cursor = this.pricesCollection
       .find({
-        sku: product['g:id'],
+        sku: product.id,
         salePrice: salePrice,
         store: this.store.name
       })
@@ -116,13 +116,13 @@ export default class StoreUpdater {
     return Promise.resolve(doc);
   }
 
-  getProductMetadata(product: GoogleMerchantProduct): MongodbProductMetadata {
+  getProductMetadata(product: ProductSnapshot): MongodbProductMetadata {
     const productMetadata: MongodbProductMetadata = {
       store: this.store.name,
-      sku: product['g:id'],
-      name: product['g:title'],
-      brand: product['g:brand'],
-      ean: product['g:gtin']
+      sku: product.id,
+      name: product.title,
+      brand: product.brand,
+      ean: product.gtin
     };
     return productMetadata;
   }
@@ -136,16 +136,16 @@ export default class StoreUpdater {
   }
 
   addNewPrice(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean,
     timestamp: number
   ): void {
     const price: number | undefined = salePrice
-      ? product['g:sale_price']
-      : product['g:price'];
+      ? product.sale_price
+      : product.price;
     if (price && this.isNumber(price)) {
       const document: MongodbProductPrice = {
-        sku: product['g:id'],
+        sku: product.id,
         price: price,
         store: this.store.name,
         salePrice: salePrice,

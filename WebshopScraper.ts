@@ -1,5 +1,5 @@
 import puppeteer, { ElementHandle, Page } from 'puppeteer';
-import { GoogleMerchantProduct, WebScraperOptions } from './types.js';
+import { ProductSnapshot, WebScraperOptions } from './types.js';
 
 export default class WebshopScraper {
   options: WebScraperOptions;
@@ -7,7 +7,7 @@ export default class WebshopScraper {
     this.options = options;
   }
 
-  async scrapeSite(): Promise<GoogleMerchantProduct[]> {
+  async scrapeSite(): Promise<ProductSnapshot[]> {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     const { catalogSearchUrl, pageParameter, totalProductsClass } =
@@ -20,7 +20,7 @@ export default class WebshopScraper {
     );
     const totalProducts = totalElementText ? parseInt(totalElementText) : 0;
 
-    let products: GoogleMerchantProduct[] = [];
+    let products: ProductSnapshot[] = [];
     products = products.concat(await this.scrapePage(page));
     let pageNumber = 1;
     while (products.length < totalProducts && products.length < 200) {
@@ -34,9 +34,9 @@ export default class WebshopScraper {
     return products;
   }
 
-  async scrapePage(page: Page): Promise<GoogleMerchantProduct[]> {
+  async scrapePage(page: Page): Promise<ProductSnapshot[]> {
     const { productItemClasses } = this.options;
-    const products: GoogleMerchantProduct[] = [];
+    const products: ProductSnapshot[] = [];
     const elements = await page.$$(productItemClasses.itemClass);
     for (const element of elements) {
       const oldPriceElement = await element.$(productItemClasses.oldPriceClass);
@@ -50,11 +50,11 @@ export default class WebshopScraper {
       );
       const listPrice = oldPrice ? oldPrice : price;
       const salePrice = price;
-      const product: GoogleMerchantProduct = {
-        'g:id': await this.evalText(productItemClasses.skuClass, element),
-        'g:price': listPrice,
-        'g:sale_price': salePrice,
-        'g:title': await this.evalText(productItemClasses.nameClass, element)
+      const product: ProductSnapshot = {
+        id: await this.evalText(productItemClasses.skuClass, element),
+        price: listPrice,
+        sale_price: salePrice,
+        title: await this.evalText(productItemClasses.nameClass, element)
       };
       console.log(product);
       products.push(product);

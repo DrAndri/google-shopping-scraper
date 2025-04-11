@@ -8,6 +8,15 @@ export interface GoogleMerchantFeed {
   };
 }
 
+export interface ProductSnapshot {
+  id: string;
+  price: number;
+  title: string;
+  brand?: string;
+  gtin?: string;
+  sale_price?: number;
+}
+
 export interface GoogleMerchantProduct {
   'g:id': string;
   'g:price': number;

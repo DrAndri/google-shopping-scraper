@@ -10,7 +10,8 @@ import {
   StoreUpdateResult,
   type GoogleMerchantFeed,
   StoreConfig,
-  WebScraperOptions
+  WebScraperOptions,
+  ProductSnapshot
 } from './types.js';
 import WebshopScraper from './WebshopScraper.js';
 
@@ -49,8 +50,20 @@ async function updateStore(
       .then((feed) => {
         const promises = [];
         for (const item of feed.rss.channel.item) {
+          const snapshot: ProductSnapshot = {
+            id: item['g:id'],
+            sale_price: item['g:sale_price'],
+            price: item['g:price'],
+            title: item['g:title'],
+            gtin: item['g:gtin'],
+            brand: item['g:brand']
+          };
           promises.push(
-            ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
+            ...storeUpdater.updateProduct(
+              snapshot,
+              timestamp,
+              thresholdTimestamp
+            )
           );
         }
         return Promise.all(promises);
