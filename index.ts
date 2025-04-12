@@ -74,7 +74,7 @@ async function updateStore(
         return storeUpdater.submitAllDocuments();
       });
   } else if (store.type === 'scraper') {
-    const scraper = new WebshopScraper(store.options as WebScraperOptions);
+    const scraper = new WebshopScraper(store);
     const products = await scraper.scrapeSite();
     const promises = [];
     for (const item of products) {

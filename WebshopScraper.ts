@@ -1,17 +1,17 @@
 import puppeteer, { ElementHandle, Page } from 'puppeteer';
-import { ProductSnapshot, WebScraperOptions } from './types.js';
+import { ProductSnapshot, StoreConfig, WebScraperOptions } from './types.js';
 
 export default class WebshopScraper {
-  options: WebScraperOptions;
-  constructor(options: WebScraperOptions) {
-    this.options = options;
+  store: StoreConfig;
+  constructor(store: StoreConfig) {
+    this.store = store;
   }
 
   async scrapeSite(): Promise<ProductSnapshot[]> {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
-    const { catalogSearchUrl, pageParameter, totalProductsClass } =
-      this.options;
+    const { catalogSearchUrl, pageParameter, totalProductsClass } = this.store
+      .options as WebScraperOptions;
 
     await page.goto(catalogSearchUrl);
     const totalElement = totalProductsClass
@@ -48,7 +48,7 @@ export default class WebshopScraper {
   }
 
   async scrapePage(page: Page): Promise<ProductSnapshot[]> {
-    const { productItemClasses } = this.options;
+    const { productItemClasses } = this.store.options as WebScraperOptions;
     const products: ProductSnapshot[] = [];
     const elements = await page.$$(productItemClasses.itemClass);
     for (const element of elements) {
