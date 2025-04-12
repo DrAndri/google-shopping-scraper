@@ -14,24 +14,47 @@ export default class WebshopScraper {
       this.options;
 
     await page.goto(catalogSearchUrl);
-    const totalElement = await page.$(totalProductsClass);
+    const totalElement = totalProductsClass
+      ? await page.$(totalProductsClass)
+      : null;
     const totalElementText = await totalElement?.evaluate(
       (node) => node.textContent
     );
     const totalProducts = totalElementText ? parseInt(totalElementText) : 0;
 
-    let products: ProductSnapshot[] = [];
-    products = products.concat(await this.scrapePage(page));
+    // let products: ProductSnapshot[] = [];
+    const productMap: Map<string, ProductSnapshot> = new Map<
+      string,
+      ProductSnapshot
+    >();
+    let nextProducts = await this.scrapePage(page);
+    // products = products.concat(nextProducts);
     let pageNumber = 1;
-    while (products.length < totalProducts) {
-      pageNumber++;
+
+    // while (products.length < totalProducts && nextProducts.length != 0) {
+    while (
+      (totalProducts ? productMap.size < totalProducts : true) &&
+      nextProducts.length != 0
+    ) {
       await this.sleep(5);
       const nextUrl = catalogSearchUrl + '&' + pageParameter + '=' + pageNumber;
       console.log('nextUrl: ', nextUrl);
       await page.goto(nextUrl);
-      products = products.concat(await this.scrapePage(page));
+      nextProducts = await this.scrapePage(page);
+      for (const product of nextProducts) {
+        productMap.set(product.id, product);
+        // if (
+        //   products.filter(
+        //     (existingProduct) => existingProduct.id === product.id
+        //   ).length === 0
+        // )
+        //   products.push(product);
+      }
+      console.log('products size: ', productMap.size);
+      pageNumber++;
+      //products = products.concat(nextProducts);
     }
-    return products;
+    return Array.from(productMap, ([name, value]) => value);
   }
 
   async scrapePage(page: Page): Promise<ProductSnapshot[]> {

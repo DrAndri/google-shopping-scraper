@@ -31,10 +31,9 @@ enum StoreType {
 }
 
 export interface StoreConfig extends Document {
-  feedUrl: string;
   name: string;
   type: StoreType;
-  options: WebScraperOptions;
+  options: WebScraperOptions | FeedOptions;
 }
 
 export interface MongodbProductMetadata extends Document {
@@ -73,6 +72,10 @@ export interface WebScraperOptions {
   productItemClasses: ProductItemClasses;
   pageParameter: string;
   totalProductsClass: string;
+}
+
+export interface FeedOptions {
+  feedUrl: string;
 }
 export interface ProductItemClasses {
   itemClass: string;

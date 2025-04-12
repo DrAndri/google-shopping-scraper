@@ -11,7 +11,8 @@ import {
   type GoogleMerchantFeed,
   StoreConfig,
   WebScraperOptions,
-  ProductSnapshot
+  ProductSnapshot,
+  FeedOptions
 } from './types.js';
 import WebshopScraper from './WebshopScraper.js';
 
@@ -46,7 +47,8 @@ async function updateStore(
   const timestamp = Math.floor(new Date().getTime() / 1000);
   const thresholdTimestamp = timestamp - 172800; //48 hours
   if (store.type === 'feed') {
-    return downloadFeed(new URL(store.feedUrl))
+    const options = store.options as FeedOptions;
+    return downloadFeed(new URL(options.feedUrl))
       .then((feed) => {
         const promises = [];
         for (const item of feed.rss.channel.item) {
@@ -72,7 +74,7 @@ async function updateStore(
         return storeUpdater.submitAllDocuments();
       });
   } else if (store.type === 'scraper') {
-    const scraper = new WebshopScraper(store.options);
+    const scraper = new WebshopScraper(store.options as WebScraperOptions);
     const products = await scraper.scrapeSite();
     const promises = [];
     for (const item of products) {
