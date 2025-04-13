@@ -4,8 +4,9 @@ services:
     build:
       dockerfile: Dockerfile
     environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - RUN_STARTUP_UPDATE=${RUN_STARTUP_UPDATE}
+      MONGODB_URI: ${MONGODB_URI}
+      RUN_STARTUP_UPDATE: ${RUN_STARTUP_UPDATE}
+      RUN_MIGRATION: ${RUN_MIGRATION}
 
   price-api:
     container_name: price-api
@@ -13,7 +14,7 @@ services:
       context: ../google-shopping-history
       dockerfile: Dockerfile
     environment:
-      - MONGODB_URI=${MONGODB_URI}
+      MONGODB_URI: ${MONGODB_URI}
     ports:
       - 3000:3000
 
