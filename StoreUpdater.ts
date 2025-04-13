@@ -6,7 +6,7 @@ import {
   type MongodbProductPrice,
   type StoreUpdateResult,
   type UpsertManyResult
-} from './types.js';
+} from './types/index.js';
 
 export default class StoreUpdater {
   pricesCollection: Collection<MongodbProductPrice>;

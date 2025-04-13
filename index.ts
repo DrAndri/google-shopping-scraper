@@ -10,10 +10,9 @@ import {
   StoreUpdateResult,
   type GoogleMerchantFeed,
   StoreConfig,
-  WebScraperOptions,
   ProductSnapshot,
   FeedOptions
-} from './types.js';
+} from './types/index.js';
 import WebshopScraper from './WebshopScraper.js';
 
 dotenv.config();

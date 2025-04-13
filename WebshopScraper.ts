@@ -1,17 +1,23 @@
 import puppeteer, { ElementHandle, Page } from 'puppeteer';
-import { ProductSnapshot, StoreConfig, WebScraperOptions } from './types.js';
+import {
+  ProductSnapshot,
+  StoreConfig,
+  WebScraperOptions
+} from './types/index.js';
 
 export default class WebshopScraper {
   store: StoreConfig;
+  options: WebScraperOptions;
   constructor(store: StoreConfig) {
     this.store = store;
+    this.options = store.options as WebScraperOptions;
   }
 
   async scrapeSite(): Promise<ProductSnapshot[]> {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
-    const { catalogSearchUrl, pageParameter, totalProductsClass } = this.store
-      .options as WebScraperOptions;
+    const { catalogSearchUrl, pageParameter, totalProductsClass } =
+      this.options;
 
     await page.goto(catalogSearchUrl);
     const totalElement = totalProductsClass
@@ -35,20 +41,19 @@ export default class WebshopScraper {
     ) {
       await this.sleep(5);
       const nextUrl = catalogSearchUrl + '&' + pageParameter + '=' + pageNumber;
-      console.log('nextUrl: ', nextUrl);
       await page.goto(nextUrl);
       nextProducts = await this.scrapePage(page);
       for (const product of nextProducts) {
         productMap.set(product.id, product);
       }
-      console.log('products size: ', productMap.size);
+      console.log(this.store.name + ' products size: ', productMap.size);
       pageNumber++;
     }
     return Array.from(productMap, ([name, value]) => value);
   }
 
   async scrapePage(page: Page): Promise<ProductSnapshot[]> {
-    const { productItemClasses } = this.store.options as WebScraperOptions;
+    const { productItemClasses } = this.options;
     const products: ProductSnapshot[] = [];
     const elements = await page.$$(productItemClasses.itemClass);
     for (const element of elements) {
@@ -64,12 +69,11 @@ export default class WebshopScraper {
       const listPrice = oldPrice ? oldPrice : price;
       const salePrice = price;
       const product: ProductSnapshot = {
-        id: await this.evalText(productItemClasses.skuClass, element),
+        id: await this.evalSku(productItemClasses.skuClass, element),
         price: listPrice,
         sale_price: salePrice,
         title: await this.evalText(productItemClasses.nameClass, element)
       };
-      console.log(product);
       products.push(product);
     }
     return products;
@@ -84,6 +88,17 @@ export default class WebshopScraper {
   async evalPrice(selector: string, element: ElementHandle) {
     const string = await this.evalText(selector, element);
     return string.replace(/\D/g, '');
+  }
+
+  async evalSku(selector: string, element: ElementHandle) {
+    let string = await this.evalText(selector, element);
+    if (this.options.sanitizers?.sku) {
+      string = string.replace(
+        this.options.sanitizers.sku.value,
+        this.options.sanitizers.sku.replace
+      );
+    }
+    return string;
   }
 
   sleep(seconds: number) {
