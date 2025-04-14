@@ -125,17 +125,17 @@ async function getAllStores(db: Db): Promise<WithId<StoreConfig>[]> {
 }
 
 function updateAllStores(mongodb: Db): Promise<void> {
-  return getAllStores(mongodb).then((stores) => {
+  return getAllStores(mongodb).then(async (stores) => {
     console.log(stores);
     for (const store of stores) {
       console.log('UPDATING', store.name);
 
       const storeUpdater = new StoreUpdater(mongodb, store);
 
-      updateStore(store, storeUpdater)
+      await updateStore(store, storeUpdater)
         .then(reportResults)
         .catch((error) => {
-          console.log('Error updating store', error);
+          console.log('Error updating store ' + store.name, error);
         });
     }
   });

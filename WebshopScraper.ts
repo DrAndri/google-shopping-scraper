@@ -19,7 +19,10 @@ export default class WebshopScraper {
     const { catalogSearchUrl, pageParameter, totalProductsClass } =
       this.options;
 
-    await page.goto(catalogSearchUrl);
+    await page.goto(catalogSearchUrl, {
+      waitUntil: 'load',
+      timeout: 300000 /* 5 mins */
+    });
     const totalElement = totalProductsClass
       ? await page.$(totalProductsClass)
       : null;
@@ -40,15 +43,25 @@ export default class WebshopScraper {
       nextProducts.length != 0
     ) {
       await this.sleep(5);
-      const nextUrl = catalogSearchUrl + '&' + pageParameter + '=' + pageNumber;
-      await page.goto(nextUrl);
+      let nextUrl = catalogSearchUrl;
+      if (pageParameter)
+        nextUrl = nextUrl + '&' + pageParameter + '=' + pageNumber;
+      console.log('Scraping url: %s', nextUrl);
+      await page.goto(nextUrl, {
+        waitUntil: 'load',
+        timeout: 300000 /* 5 mins */
+      });
       nextProducts = await this.scrapePage(page);
       for (const product of nextProducts) {
         productMap.set(product.sku, product);
       }
-      console.log(this.store.name + ' products size: ', productMap.size);
       pageNumber++;
     }
+    console.log(
+      'Found %d products in store %s',
+      productMap.size,
+      this.store.name
+    );
     return Array.from(productMap, ([, value]) => value);
   }
 
@@ -58,9 +71,9 @@ export default class WebshopScraper {
     const elements = await page.$$(productItemClasses.itemClass);
     for (const element of elements) {
       try {
-        const oldPriceElement = await element.$(
-          productItemClasses.oldPriceClass
-        );
+        const oldPriceElement = productItemClasses.oldPriceClass
+          ? await element.$(productItemClasses.oldPriceClass)
+          : null;
         const oldPrice = oldPriceElement
           ? parseInt(
               await this.evalPrice(productItemClasses.oldPriceClass, element)
