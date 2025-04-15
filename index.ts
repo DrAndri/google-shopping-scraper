@@ -15,7 +15,6 @@ import {
 } from './types/index.js';
 import WebshopScraper from './WebshopScraper.js';
 import { exit } from 'process';
-import { addStoreObjectIdFieldToCollections } from './converter.js';
 
 dotenv.config();
 
@@ -161,13 +160,6 @@ function getMongodb(): Promise<Db> {
 
 const mongoDb = await getMongodb();
 await initMongodbCollections(mongoDb);
-
-if (process.env.RUN_MIGRATION === 'true') {
-  console.log('doing migration!!!');
-  await addStoreObjectIdFieldToCollections(mongoDb);
-  console.log('exiting');
-  exit(0);
-}
 
 if (process.env.RUN_STARTUP_UPDATE === 'true') {
   console.log('Running startup update');
