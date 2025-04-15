@@ -55,7 +55,8 @@ export default class WebshopScraper {
       for (const product of nextProducts) {
         productMap.set(product.sku, product);
       }
-      pageNumber++;
+      if (pageParameter) pageNumber++;
+      else break;
     }
     console.log(
       'Found %d products in store %s',
@@ -67,6 +68,14 @@ export default class WebshopScraper {
 
   async scrapePage(page: Page): Promise<ProductSnapshot[]> {
     const { productItemClasses } = this.options;
+    await page
+      .waitForSelector(
+        productItemClasses.itemClass + ' ' + productItemClasses.listPriceClass,
+        {
+          timeout: 60000 /* 1 min */
+        }
+      )
+      .catch(() => console.log('timeout waiting for selector'));
     const products: ProductSnapshot[] = [];
     const elements = await page.$$(productItemClasses.itemClass);
     for (const element of elements) {

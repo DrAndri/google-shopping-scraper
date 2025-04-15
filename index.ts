@@ -125,14 +125,14 @@ async function getAllStores(db: Db): Promise<WithId<StoreConfig>[]> {
 }
 
 function updateAllStores(mongodb: Db): Promise<void> {
-  return getAllStores(mongodb).then(async (stores) => {
+  return getAllStores(mongodb).then((stores) => {
     console.log(stores);
     for (const store of stores) {
       console.log('UPDATING', store.name);
 
       const storeUpdater = new StoreUpdater(mongodb, store);
 
-      await updateStore(store, storeUpdater)
+      updateStore(store, storeUpdater)
         .then(reportResults)
         .catch((error) => {
           console.log('Error updating store ' + store.name, error);
@@ -144,7 +144,8 @@ function initMongodbCollections(db: Db): Promise<void> {
   return Promise.all([
     db.collection('priceChanges').createIndex({ store_id: 1, sku: 1 }),
     db.collection('productMetadata').createIndex({ store_id: 1, sku: 1 }),
-    db.collection('stores').createIndex({ name: 1 })
+    db.collection('stores').createIndex({ apiEnabled: 1 }),
+    db.collection('stores').createIndex({ scraperEnabled: 1 })
   ]).then();
 }
 
