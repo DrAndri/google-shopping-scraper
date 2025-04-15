@@ -1,21 +1,21 @@
-import { type Collection, type Db, type UpdateResult } from 'mongodb';
+import { WithId, type Collection, type Db, type UpdateResult } from 'mongodb';
 import {
-  StoreConfig,
-  type GoogleMerchantProduct,
+  type StoreConfig,
+  type ProductSnapshot,
   type MongodbProductMetadata,
   type MongodbProductPrice,
   type StoreUpdateResult,
   type UpsertManyResult
-} from './types.js';
+} from './types/index.js';
 
-class StoreUpdater {
+export default class StoreUpdater {
   pricesCollection: Collection<MongodbProductPrice>;
   metadataCollection: Collection<MongodbProductMetadata>;
-  store: StoreConfig;
-  priceUpdateDocuments: MongodbProductPrice[];
+  store: WithId<StoreConfig>;
+  priceUpdateDocuments: WithId<MongodbProductPrice>[];
   newPriceDocuments: MongodbProductPrice[];
   metadataDocuments: MongodbProductMetadata[];
-  constructor(mongodb: Db, store: StoreConfig) {
+  constructor(mongodb: Db, store: WithId<StoreConfig>) {
     this.store = store;
     this.priceUpdateDocuments = [];
     this.newPriceDocuments = [];
@@ -31,7 +31,7 @@ class StoreUpdater {
   }
 
   updateProduct(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     timestamp: number,
     thresholdTimestamp: number
   ): Promise<void>[] {
@@ -52,7 +52,7 @@ class StoreUpdater {
   }
 
   async addPriceUpsert(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean,
     timestamp: number,
     thresholdTimestamp: number
@@ -72,43 +72,41 @@ class StoreUpdater {
     }
   }
 
-  sanitizeProduct(product: GoogleMerchantProduct): GoogleMerchantProduct {
-    product['g:id'] = String(product['g:id']);
-    product['g:gtin'] = String(product['g:gtin']);
-    product['g:brand'] = String(product['g:brand']);
-    product['g:title'] = String(product['g:title']);
-    if (typeof product['g:price'] !== 'number')
+  sanitizeProduct(product: ProductSnapshot): ProductSnapshot {
+    product.sku = String(product.sku);
+    if (product.gtin) product.gtin = String(product.gtin);
+    if (product.brand) product.brand = String(product.brand);
+    product.title = String(product.title);
+    if (typeof product.price !== 'number')
       throw new Error('price is not a number');
     return product;
   }
 
   isPriceDifferent(
     price: MongodbProductPrice,
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean
   ): boolean {
-    return (
-      price.price !== (salePrice ? product['g:sale_price'] : product['g:price'])
-    );
+    return price.price !== (salePrice ? product.sale_price : product.price);
   }
 
-  isOnSale(product: GoogleMerchantProduct): boolean {
+  isOnSale(product: ProductSnapshot): boolean {
     return (
-      product['g:sale_price'] !== undefined &&
-      typeof product['g:sale_price'] === 'number' &&
-      product['g:sale_price'] < product['g:price']
+      product.sale_price !== undefined &&
+      typeof product.sale_price === 'number' &&
+      product.sale_price < product.price
     );
   }
 
   async getLastPrice(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean
-  ): Promise<MongodbProductPrice | null> {
+  ): Promise<WithId<MongodbProductPrice> | null> {
     const cursor = this.pricesCollection
       .find({
-        sku: product['g:id'],
+        sku: product.sku,
         salePrice: salePrice,
-        store: this.store.name
+        store_id: this.store._id
       })
       .sort({ end: -1 })
       .limit(1);
@@ -116,19 +114,19 @@ class StoreUpdater {
     return Promise.resolve(doc);
   }
 
-  getProductMetadata(product: GoogleMerchantProduct): MongodbProductMetadata {
+  getProductMetadata(product: ProductSnapshot): MongodbProductMetadata {
     const productMetadata: MongodbProductMetadata = {
-      store: this.store.name,
-      sku: product['g:id'],
-      name: product['g:title'],
-      brand: product['g:brand'],
-      ean: product['g:gtin']
+      store_id: this.store._id,
+      sku: product.sku,
+      name: product.title,
+      brand: product.brand,
+      ean: product.gtin
     };
     return productMetadata;
   }
 
   updatePriceTimestamp(
-    priceDocument: MongodbProductPrice,
+    priceDocument: WithId<MongodbProductPrice>,
     timestamp: number
   ): void {
     priceDocument.end = timestamp;
@@ -136,18 +134,18 @@ class StoreUpdater {
   }
 
   addNewPrice(
-    product: GoogleMerchantProduct,
+    product: ProductSnapshot,
     salePrice: boolean,
     timestamp: number
   ): void {
     const price: number | undefined = salePrice
-      ? product['g:sale_price']
-      : product['g:price'];
+      ? product.sale_price
+      : product.price;
     if (price && this.isNumber(price)) {
       const document: MongodbProductPrice = {
-        sku: product['g:id'],
+        sku: product.sku,
         price: price,
-        store: this.store.name,
+        store_id: this.store._id,
         salePrice: salePrice,
         start: timestamp,
         end: timestamp
@@ -184,7 +182,7 @@ class StoreUpdater {
   }
 
   async updatePrices(
-    documents: MongodbProductPrice[],
+    documents: WithId<MongodbProductPrice>[],
     collection: Collection<MongodbProductPrice>
   ): Promise<UpsertManyResult> {
     const promises: Promise<UpdateResult>[] = [];
@@ -217,7 +215,7 @@ class StoreUpdater {
     const promises: Promise<UpdateResult>[] = [];
     const options = { upsert: true };
     for (const document of documents) {
-      const filter = { sku: document.sku, store: document.store };
+      const filter = { sku: document.sku, store_id: document.store_id };
       const update = { $set: document };
       promises.push(collection.updateOne(filter, update, options));
     }
@@ -236,5 +234,3 @@ class StoreUpdater {
     });
   }
 }
-
-export default StoreUpdater;
