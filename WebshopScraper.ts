@@ -14,7 +14,9 @@ export default class WebshopScraper {
   }
 
   async scrapeSite(): Promise<ProductSnapshot[]> {
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const page = await browser.newPage();
     const { catalogSearchUrl, pageParameter, totalProductsClass } =
       this.options;
