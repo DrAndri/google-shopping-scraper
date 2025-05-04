@@ -43,3 +43,8 @@ export interface UpsertManyResult {
   modifiedCount: number;
   upsertedCount: number;
 }
+export interface Crawl4AiCrawlRequest {
+  urls: string;
+}
+
+export type Crawl4AiRequest = Crawl4AiCrawlRequest;

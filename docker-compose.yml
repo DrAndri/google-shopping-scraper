@@ -7,6 +7,13 @@ services:
       MONGODB_URI: ${MONGODB_URI}
       RUN_STARTUP_UPDATE: ${RUN_STARTUP_UPDATE}
       RUN_MIGRATION: ${RUN_MIGRATION}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   price-api:
     container_name: price-api

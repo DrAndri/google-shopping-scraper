@@ -5,7 +5,7 @@ export interface StoreConfig {
   type: StoreType;
   scraperEnabled: boolean;
   apiEnabled: boolean;
-  options: WebScraperOptions | FeedOptions;
+  options: WebScraperOptions | FeedOptions | AIScraperOptions;
 }
 
 export interface MongodbProductMetadata {
@@ -57,4 +57,8 @@ export interface ProductItemClasses {
 
 export interface FeedOptions {
   feedUrl: string;
+}
+
+export interface AIScraperOptions {
+  baseUrl: string;
 }

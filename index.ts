@@ -14,7 +14,7 @@ import {
   FeedOptions
 } from './types/index.js';
 import WebshopScraper from './WebshopScraper.js';
-import { exit } from 'process';
+import AIScraper from './AIScraper.js';
 
 dotenv.config();
 
@@ -158,18 +158,21 @@ function getMongodb(): Promise<Db> {
     .then(() => mongoClient.db('google-shopping-scraper'));
 }
 
-const mongoDb = await getMongodb();
-await initMongodbCollections(mongoDb);
+// const mongoDb = await getMongodb();
+// await initMongodbCollections(mongoDb);
 
-if (process.env.RUN_STARTUP_UPDATE === 'true') {
-  console.log('Running startup update');
-  updateAllStores(mongoDb).catch((error) => console.log(error));
-}
+// if (process.env.RUN_STARTUP_UPDATE === 'true') {
+//   console.log('Running startup update');
+//   updateAllStores(mongoDb).catch((error) => console.log(error));
+// }
 
-cron.schedule('00 12 * * *', () => {
-  console.log('Updating all stores');
-  getMongodb()
-    .then(updateAllStores)
-    .catch((error) => console.log(error));
-});
-console.log('Cron schedule started');
+// cron.schedule('00 12 * * *', () => {
+//   console.log('Updating all stores');
+//   getMongodb()
+//     .then(updateAllStores)
+//     .catch((error) => console.log(error));
+// });
+// console.log('Cron schedule started');
+
+const aiScraper = new AIScraper();
+await aiScraper.scrapeSite();
