@@ -3,7 +3,7 @@ import { ProductAttributeGroup } from './types.js';
 
 export interface StoreConfig {
   name: string;
-  type: 'crawler' | 'scraper' | 'feed';
+  type: 'httpcrawler' | 'crawler' | 'scraper' | 'feed';
   scraperEnabled: boolean;
   apiEnabled: boolean;
   options: WebScraperOptions | FeedOptions | WebshopCrawlerOptions;

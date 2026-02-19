@@ -103,6 +103,18 @@ async function updateStore(
     return Promise.all(promises).then(() => {
       return storeUpdater.submitAllDocuments();
     });
+  } else if (store.type === 'httpcrawler') {
+    const crawler = new WebshopCrawler(store, timestamp);
+    const products = await crawler.crawlSite();
+    const promises = [];
+    for (const item of products) {
+      promises.push(
+        ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
+      );
+    }
+    return Promise.all(promises).then(() => {
+      return storeUpdater.submitAllDocuments();
+    });
   } else
     return Promise.reject(
       new Error('Type not supported for store ' + store.name)
@@ -144,47 +156,45 @@ async function getAllStores(db: Db): Promise<WithId<StoreConfig>[]> {
   return await cursor.toArray();
 }
 
-function updateAllStores(mongodb: Db): Promise<void> {
-  return getAllStores(mongodb).then(async (stores) => {
-    console.log(stores);
-    const promises = [];
-    for (const store of stores) {
-      console.log('UPDATING', store.name);
+async function updateAllStores(mongodb: Db): Promise<void> {
+  const stores = await getAllStores(mongodb);
+  console.log(stores);
+  const promises = [];
+  for (const store of stores) {
+    console.log('UPDATING', store.name);
 
-      const storeUpdater = new StoreUpdater(mongodb, store);
+    const storeUpdater = new StoreUpdater(mongodb, store);
 
-      promises.push(
-        limit(() =>
-          updateStore(store, storeUpdater)
-            .then(reportResults)
-            .catch((error) => {
-              console.log('Error updating store ' + store.name, error);
-            })
-        )
-      );
-    }
-    await Promise.all(promises).then(() => {
-      console.log('ALL STORES UPDATED');
-    });
+    promises.push(
+      limit(() =>
+        updateStore(store, storeUpdater)
+          .then(reportResults)
+          .catch((error) => {
+            console.log('Error updating store ' + store.name, error);
+          })
+      )
+    );
+  }
+  await Promise.all(promises).then(() => {
+    console.log('ALL STORES UPDATED');
   });
 }
-function initMongodbCollections(db: Db): Promise<void> {
+async function initMongodbCollections(db: Db): Promise<string[]> {
   return Promise.all([
     db.collection('priceChanges').createIndex({ store_id: 1, sku: 1 }),
     db.collection('productMetadata').createIndex({ store_id: 1, sku: 1 }),
     db.collection('stores').createIndex({ apiEnabled: 1 }),
     db.collection('stores').createIndex({ scraperEnabled: 1 })
-  ]).then();
+  ]);
 }
 
-function getMongodb(): Promise<Db> {
+async function getMongodb(): Promise<Db> {
   if (MONGODB_URI === undefined) {
     throw new Error('MONGODB_URI not set');
   }
   const mongoClient = new MongoClient(MONGODB_URI);
-  return mongoClient
-    .connect()
-    .then(() => mongoClient.db('google-shopping-scraper'));
+  await mongoClient.connect();
+  return mongoClient.db('google-shopping-scraper');
 }
 
 const mongoDb = await getMongodb();

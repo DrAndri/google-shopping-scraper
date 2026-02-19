@@ -193,8 +193,8 @@ export default class WebshopCrawler {
       //   });
 
       const productLocator = await once(() => findProductLocator(page), {
-        interval: 2000,
-        numberOfChecks: 10
+        interval: 3000,
+        numberOfChecks: 7
       });
 
       const logger = createProductLogger(

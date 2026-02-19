@@ -1,5 +1,7 @@
 TODO
 Publish common types
+Implement "fetch more products" (ok beint)
+Implement "open megamenu" (byko and advania)
 
 Product attributes
 Search engine
