@@ -14,7 +14,7 @@
   "dependencies": {
     "@types/node": "^22.14.1",
     "dotenv": "^16.5.0",
-    "fast-xml-parser": "^5.2.0",
+    "fast-xml-parser": "^5.4.1",
     "mongodb": "^6.15.0",
     "node-cron": "^3.0.2",
     "node-fetch": "^3.3.2",
