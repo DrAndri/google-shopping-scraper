@@ -18,7 +18,7 @@
     "mongodb": "^6.15.0",
     "node-cron": "^3.0.2",
     "node-fetch": "^3.3.2",
-    "puppeteer": "^24.6.1",
+    "puppeteer": "^24.38.0",
     "ts-node": "^10.9.2"
   },
   "devDependencies": {
