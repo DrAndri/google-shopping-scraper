@@ -88,7 +88,7 @@ export default class PageHtmlScraper {
     } else return undefined;
   }
 
-  async scrapeAttributes(
+  scrapeAttributes(
     $: CheerioAPI,
     selectors: AttributeSelectors | undefined,
     logger: Logger
@@ -102,56 +102,49 @@ export default class PageHtmlScraper {
     ) {
       return undefined;
     }
-    const attributeTableLocator = $(
-      this.getSelector(selectors.attributesTable)
-    ).filter(
-      (i, elem) =>
-        this.hasChild($(elem), selectors.attribute, selectors.attributeValue) !=
-        null
+    const attributeTableLocator = $(selectors.attributesTable).filter(
+      function () {
+        return $(this).find(selectors.attribute).length > 0;
+      }
     );
 
-    if ((await attributeTableLocator.count()) > 0) {
-      for (const oneTable of await attributeTableLocator.all()) {
+    $(selectors.attributesTable).filter(function () {
+      return $(this).find(selectors.attribute).length > 0;
+    });
+
+    if (attributeTableLocator.length > 0) {
+      for (const oneTable of attributeTableLocator.toArray()) {
         const attributeGroupsLocator = selectors.attributeGroup
-          ? oneTable.locator(selectors.attributeGroup).filter({
-              has: oneTable
-                .page()
-                .locator(selectors.attribute)
-                .locator(selectors.attributeLabel)
-            })
-          : oneTable;
-        const groupCount = await attributeGroupsLocator.count();
+          ? $(oneTable).children(selectors.attributeGroup)
+          : $(oneTable);
+        const groupCount = attributeGroupsLocator.length;
         if (groupCount > 0) {
-          for (const attributeGroupLocator of await attributeGroupsLocator.all()) {
+          for (const attributeGroupLocator of attributeGroupsLocator.toArray()) {
             const groupName = selectors.attributeGroupName
-              ? ((await this.evalText(
-                  selectors.attributeGroupName,
-                  attributeGroupLocator
-                )) ?? 'Óflokkað')
+              ? ($(attributeGroupLocator)
+                  .children(selectors.attributeGroupName)
+                  .text() ?? 'Óflokkað')
               : 'Óflokkað';
-            const attributeLocator = attributeGroupLocator
-              .locator(selectors.attribute)
-              .filter({
-                has: attributeGroupLocator
-                  .page()
-                  .locator(selectors.attributeLabel)
-              })
-              .filter({
-                has: attributeGroupLocator
-                  .page()
-                  .locator(selectors.attributeValue)
+            const attributeLocator = $(attributeGroupLocator)
+              .children(selectors.attribute)
+              .filter(function () {
+                return (
+                  $(this).children(selectors.attributeLabel).length > 0 &&
+                  $(this).children(selectors.attributeValue).length > 0
+                );
               });
+
             const attributes: ProductAttribute[] = [];
-            for (const oneAttribute of await attributeLocator.all()) {
+            for (const oneAttribute of attributeLocator.toArray()) {
               try {
-                const value = await this.evalText(
-                  selectors.attributeValue,
-                  oneAttribute
-                );
-                const name = await this.evalText(
-                  selectors.attributeLabel,
-                  oneAttribute
-                );
+                const value = $(oneAttribute)
+                  .children(selectors.attributeValue)
+                  .first()
+                  .text();
+                const name = $(oneAttribute)
+                  .children(selectors.attributeLabel)
+                  .first()
+                  .text();
                 if (!value) throw new Error('Attribute value not found');
                 if (!name) throw new Error('Attribute name not found');
                 attributes.push({
@@ -160,11 +153,7 @@ export default class PageHtmlScraper {
                 });
               } catch (e) {
                 logger.log('debug', 'Error getting attribute: %O', e);
-                logger.log(
-                  'debug',
-                  'Attribute: %s',
-                  await oneAttribute.textContent()
-                );
+                logger.log('debug', 'Attribute: %s', $(oneAttribute).text());
               }
             }
             attributeGroups.push({
@@ -187,15 +176,6 @@ export default class PageHtmlScraper {
     return $(this.getSelector(selector)).filter(
       // eslint-disable-next-line @typescript-eslint/prefer-includes
       (i, element) => $(element).text().indexOf(text) > -1
-    );
-  }
-
-  hasChild($: CheerioAPI, selector: string, child: string) {
-    return $(this.getSelector(selector)).filter(
-      (i, element) =>
-        $(element)
-          .children()
-          .filter((i, element) => $(element).is(child)).length > 0
     );
   }
 
@@ -245,23 +225,20 @@ export default class PageHtmlScraper {
     const { listPrice, salePrice } = this.scrapePrices($);
 
     const inStock = this.scrapeInStock($);
+    if (inStock === undefined) errors.inStock = true;
     const image = this.scrapeImage($);
-    /*     const attributeGroups = this.scrapeAttributes(
-      $,
-      this.selectors.attributes,
-      logger
-    ).catch((e) => {
-      logger.log('warn', 'Error scraping attributes: %O', e);
-      errors.attributes = true;
-      return undefined;
-    }); */
-
+    if (image === undefined) errors.image = true;
+    const attributeGroups: ProductAttributeGroup[] | undefined =
+      this.scrapeAttributes($, this.selectors.attributes, logger);
+    if (attributeGroups === undefined) errors.attributes = true;
     const name = this.evalText(this.selectors.name, $);
+    if (name === undefined) errors.name = true;
     const brand = this.scrapeBrand($);
-
+    if (brand === undefined) errors.brand = true;
     const description = this.scrapeDescription($);
+    if (description === undefined) errors.description = true;
     const categories = this.scrapeCategories($, name);
-
+    if (categories === undefined) errors.categories = true;
     const product: ProductSnapshot = {
       sku: sku,
       price: listPrice,
@@ -271,7 +248,7 @@ export default class PageHtmlScraper {
       image: image,
       description: description,
       inStock: inStock,
-      //attributes: attributeGroups,
+      attributes: attributeGroups,
       url: url,
       categories: categories,
       gtin: undefined
