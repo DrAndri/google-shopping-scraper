@@ -1,5 +1,5 @@
 
-FROM node:24-bullseye
+FROM apify/actor-node-playwright:24
 
 ENV NODE_ENV=production
 
@@ -11,7 +11,7 @@ COPY package.json yarn.lock ./
 
 RUN yarn install --production --frozen-lockfile
 
-RUN npx playwright install --with-deps
+#RUN npx playwright install --with-deps
 
 COPY . .
 RUN yarn build
