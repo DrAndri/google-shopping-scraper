@@ -16,6 +16,7 @@ import {
 } from './types/index.js';
 // import WebshopScraper from './WebshopScraper.js';
 import WebshopCrawler from './crawler/WebshopCrawler.js';
+import WebshopHtmlCrawler from './crawler/WebshopHtmlCrawler.js';
 
 const storeConcurrencyLimit = parseInt(
   process.env.STORE_CONCURRENCY_LIMIT ?? '5'
@@ -104,7 +105,7 @@ async function updateStore(
       return storeUpdater.submitAllDocuments();
     });
   } else if (store.type === 'httpcrawler') {
-    const crawler = new WebshopCrawler(store, timestamp);
+    const crawler = new WebshopHtmlCrawler(store, timestamp);
     const products = await crawler.crawlSite();
     const promises = [];
     for (const item of products) {
