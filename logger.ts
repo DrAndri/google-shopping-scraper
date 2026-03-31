@@ -47,7 +47,7 @@ export const createProductLogger = (
         },
         format: combine(splat(), errors({ stack: true }), format.json()),
         json: true,
-        level: 'info',
+        level: 'debug',
         interval: 30,
         silent: !ENABLE_PRODUCT_LOGGING
       })

@@ -110,13 +110,11 @@ export default class WebshopHtmlCrawler {
         batchTimestamp
       );
       const html = $.root().html();
-
-      if (
-        productLocator.length > 0 &&
-        html &&
-        // eslint-disable-next-line @typescript-eslint/prefer-includes
-        html.indexOf(productPageIdentifier) > -1
-      ) {
+      const identifierInHtml = html
+        ? // eslint-disable-next-line @typescript-eslint/prefer-includes
+          html.indexOf(productPageIdentifier) > -1
+        : false;
+      if (productLocator.length > 0 && identifierInHtml) {
         //TODO: check if productLocator matches multiple elements
         logger.log('debug', 'processing url: %s', request.loadedUrl);
         try {
@@ -149,6 +147,12 @@ export default class WebshopHtmlCrawler {
         }
       } else {
         logger.log('info', 'url is not a product page: %s', request.loadedUrl);
+        logger.log(
+          'debug',
+          'selector: %s, identifier: %s',
+          productLocator.length > 0,
+          identifierInHtml
+        );
       }
 
       logger.close();
