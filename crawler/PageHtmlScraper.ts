@@ -109,10 +109,6 @@ export default class PageHtmlScraper {
         }
       );
 
-      $(selectors.attributesTable).filter(function () {
-        return $(this).find(selectors.attribute).length > 0;
-      });
-
       if (attributeTableLocator.length > 0) {
         for (const oneTable of attributeTableLocator.toArray()) {
           const attributeGroupsLocator = selectors.attributeGroup
