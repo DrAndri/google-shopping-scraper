@@ -21,7 +21,7 @@
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "p-limit": "^7.3.0",
-    "playwright": "^1.59.0",
+    "playwright": "^1.59.1",
     "sanitize-html": "^2.17.2",
     "ts-node": "^10.9.2",
     "winston": "^3.19.0",
