@@ -103,11 +103,11 @@ export default class PageHtmlScraper {
       ) {
         return undefined;
       }
-      const attributeTableLocator = $(selectors.attributesTable).filter(
-        function () {
-          return $(this).find(selectors.attribute).length > 0;
-        }
-      );
+      const attributeTableLocator = $(
+        this.getSelector(selectors.attributesTable)
+      ).filter(function () {
+        return $(this).find(selectors.attribute).length > 0;
+      });
 
       if (attributeTableLocator.length > 0) {
         for (const oneTable of attributeTableLocator.toArray()) {
