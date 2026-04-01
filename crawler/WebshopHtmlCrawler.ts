@@ -115,6 +115,12 @@ export default class WebshopHtmlCrawler {
           html.indexOf(productPageIdentifier) > -1
         : false;
       if (productLocator.length > 0 && identifierInHtml) {
+        logger.log(
+          'debug',
+          'selector: %s, identifier: %s',
+          productLocator.length > 0,
+          identifierInHtml
+        );
         //TODO: check if productLocator matches multiple elements
         logger.log('debug', 'processing url: %s', request.loadedUrl);
         try {

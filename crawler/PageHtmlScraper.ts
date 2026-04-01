@@ -94,79 +94,83 @@ export default class PageHtmlScraper {
     logger: Logger
   ) {
     const attributeGroups: ProductAttributeGroup[] = [];
-    if (
-      !selectors?.attribute ||
-      !selectors.attributeLabel ||
-      !selectors.attributeValue ||
-      !selectors.attributesTable
-    ) {
-      return undefined;
-    }
-    const attributeTableLocator = $(selectors.attributesTable).filter(
-      function () {
-        return $(this).find(selectors.attribute).length > 0;
+    try {
+      if (
+        !selectors?.attribute ||
+        !selectors.attributeLabel ||
+        !selectors.attributeValue ||
+        !selectors.attributesTable
+      ) {
+        return undefined;
       }
-    );
-
-    $(selectors.attributesTable).filter(function () {
-      return $(this).find(selectors.attribute).length > 0;
-    });
-
-    if (attributeTableLocator.length > 0) {
-      for (const oneTable of attributeTableLocator.toArray()) {
-        const attributeGroupsLocator = selectors.attributeGroup
-          ? $(oneTable).children(selectors.attributeGroup)
-          : $(oneTable);
-        const groupCount = attributeGroupsLocator.length;
-        if (groupCount > 0) {
-          for (const attributeGroupLocator of attributeGroupsLocator.toArray()) {
-            const groupName = selectors.attributeGroupName
-              ? ($(attributeGroupLocator)
-                  .children(selectors.attributeGroupName)
-                  .text() ?? 'Óflokkað')
-              : 'Óflokkað';
-            const attributeLocator = $(attributeGroupLocator)
-              .children(selectors.attribute)
-              .filter(function () {
-                return (
-                  $(this).children(selectors.attributeLabel).length > 0 &&
-                  $(this).children(selectors.attributeValue).length > 0
-                );
-              });
-
-            const attributes: ProductAttribute[] = [];
-            for (const oneAttribute of attributeLocator.toArray()) {
-              try {
-                const value = $(oneAttribute)
-                  .children(selectors.attributeValue)
-                  .first()
-                  .text();
-                const name = $(oneAttribute)
-                  .children(selectors.attributeLabel)
-                  .first()
-                  .text();
-                if (!value) throw new Error('Attribute value not found');
-                if (!name) throw new Error('Attribute name not found');
-                attributes.push({
-                  value: value,
-                  name: name
-                });
-              } catch (e) {
-                logger.log('debug', 'Error getting attribute: %O', e);
-                logger.log('debug', 'Attribute: %s', $(oneAttribute).text());
-              }
-            }
-            attributeGroups.push({
-              name: groupName,
-              attributes: attributes
-            });
-          }
-        } else {
-          throw new Error('No attribute groups found');
+      const attributeTableLocator = $(selectors.attributesTable).filter(
+        function () {
+          return $(this).find(selectors.attribute).length > 0;
         }
+      );
+
+      $(selectors.attributesTable).filter(function () {
+        return $(this).find(selectors.attribute).length > 0;
+      });
+
+      if (attributeTableLocator.length > 0) {
+        for (const oneTable of attributeTableLocator.toArray()) {
+          const attributeGroupsLocator = selectors.attributeGroup
+            ? $(oneTable).children(selectors.attributeGroup)
+            : $(oneTable);
+          const groupCount = attributeGroupsLocator.length;
+          if (groupCount > 0) {
+            for (const attributeGroupLocator of attributeGroupsLocator.toArray()) {
+              const groupName = selectors.attributeGroupName
+                ? ($(attributeGroupLocator)
+                    .children(selectors.attributeGroupName)
+                    .text() ?? 'Óflokkað')
+                : 'Óflokkað';
+              const attributeLocator = $(attributeGroupLocator)
+                .children(selectors.attribute)
+                .filter(function () {
+                  return (
+                    $(this).children(selectors.attributeLabel).length > 0 &&
+                    $(this).children(selectors.attributeValue).length > 0
+                  );
+                });
+
+              const attributes: ProductAttribute[] = [];
+              for (const oneAttribute of attributeLocator.toArray()) {
+                try {
+                  const value = $(oneAttribute)
+                    .children(selectors.attributeValue)
+                    .first()
+                    .text();
+                  const name = $(oneAttribute)
+                    .children(selectors.attributeLabel)
+                    .first()
+                    .text();
+                  if (!value) throw new Error('Attribute value not found');
+                  if (!name) throw new Error('Attribute name not found');
+                  attributes.push({
+                    value: value,
+                    name: name
+                  });
+                } catch (e) {
+                  logger.log('debug', 'Error getting attribute: %O', e);
+                  logger.log('debug', 'Attribute: %s', $(oneAttribute).text());
+                }
+              }
+              attributeGroups.push({
+                name: groupName,
+                attributes: attributes
+              });
+            }
+          } else {
+            throw new Error('No attribute groups found');
+          }
+        }
+      } else {
+        throw new Error('No attribute tables found');
       }
-    } else {
-      throw new Error('No attribute tables found');
+    } catch (e) {
+      logger.log('warn', 'Error scraping attributes: %O', e);
     }
 
     return attributeGroups.length > 0 ? attributeGroups : undefined;
