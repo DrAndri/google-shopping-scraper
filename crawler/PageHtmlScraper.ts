@@ -120,7 +120,7 @@ export default class PageHtmlScraper {
               const groupName = selectors.attributeGroupName
                 ? ($(attributeGroupLocator)
                     .find(selectors.attributeGroupName)
-                    .text() ?? 'Óflokkað')
+                    .text().trim() ?? 'Óflokkað')
                 : 'Óflokkað';
               const attributeLocator = $(attributeGroupLocator)
                 .find(selectors.attribute)
@@ -153,10 +153,12 @@ export default class PageHtmlScraper {
                   logger.log('debug', 'Attribute: %s', $(oneAttribute).text());
                 }
               }
-              attributeGroups.push({
-                name: groupName,
-                attributes: attributes
-              });
+              if (attributes.length > 0) {
+                attributeGroups.push({
+                  name: groupName ? groupName : 'Óflokkað',
+                  attributes: attributes
+                });
+              }
             }
           } else {
             throw new Error('No attribute groups found');
