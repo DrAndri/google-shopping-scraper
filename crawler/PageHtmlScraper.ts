@@ -112,22 +112,22 @@ export default class PageHtmlScraper {
       if (attributeTableLocator.length > 0) {
         for (const oneTable of attributeTableLocator.toArray()) {
           const attributeGroupsLocator = selectors.attributeGroup
-            ? $(oneTable).children(selectors.attributeGroup)
+            ? $(oneTable).find(selectors.attributeGroup)
             : $(oneTable);
           const groupCount = attributeGroupsLocator.length;
           if (groupCount > 0) {
             for (const attributeGroupLocator of attributeGroupsLocator.toArray()) {
               const groupName = selectors.attributeGroupName
                 ? ($(attributeGroupLocator)
-                    .children(selectors.attributeGroupName)
+                    .find(selectors.attributeGroupName)
                     .text() ?? 'Óflokkað')
                 : 'Óflokkað';
               const attributeLocator = $(attributeGroupLocator)
-                .children(selectors.attribute)
+                .find(selectors.attribute)
                 .filter(function () {
                   return (
-                    $(this).children(selectors.attributeLabel).length > 0 &&
-                    $(this).children(selectors.attributeValue).length > 0
+                    $(this).find(selectors.attributeLabel).length > 0 &&
+                    $(this).find(selectors.attributeValue).length > 0
                   );
                 });
 
@@ -135,11 +135,11 @@ export default class PageHtmlScraper {
               for (const oneAttribute of attributeLocator.toArray()) {
                 try {
                   const value = $(oneAttribute)
-                    .children(selectors.attributeValue)
+                    .find(selectors.attributeValue)
                     .first()
                     .text();
                   const name = $(oneAttribute)
-                    .children(selectors.attributeLabel)
+                    .find(selectors.attributeLabel)
                     .first()
                     .text();
                   if (!value) throw new Error('Attribute value not found');
