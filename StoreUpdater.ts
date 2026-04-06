@@ -87,14 +87,14 @@ export default class StoreUpdater {
     product: ProductSnapshot,
     salePrice: boolean
   ): boolean {
-    return price.price !== (salePrice ? product.sale_price : product.price);
+    return price.price !== (salePrice ? product.salePrice : product.price);
   }
 
   isOnSale(product: ProductSnapshot): boolean {
     return (
-      product.sale_price !== undefined &&
-      typeof product.sale_price === 'number' &&
-      product.sale_price < product.price
+      product.salePrice !== undefined &&
+      typeof product.salePrice === 'number' &&
+      product.salePrice < product.price
     );
   }
 
@@ -106,7 +106,7 @@ export default class StoreUpdater {
       .find({
         sku: product.sku,
         salePrice: salePrice,
-        store_id: this.store._id
+        storeId: this.store._id
       })
       .sort({ end: -1 })
       .limit(1);
@@ -116,7 +116,7 @@ export default class StoreUpdater {
 
   getProductMetadata(product: ProductSnapshot): MongodbProductMetadata {
     const productMetadata: MongodbProductMetadata = {
-      store_id: this.store._id,
+      storeId: this.store._id,
       sku: product.sku,
       name: product.title,
       brand: product.brand,
@@ -144,7 +144,7 @@ export default class StoreUpdater {
     timestamp: number
   ): void {
     const price: number | undefined = salePrice
-      ? product.sale_price
+      ? product.salePrice
       : product.price;
     if (price && this.isNumber(price)) {
       const document: MongodbProductPrice = {
@@ -153,7 +153,7 @@ export default class StoreUpdater {
         salePrice: salePrice,
         start: timestamp,
         end: timestamp,
-        store_id: this.store._id
+        storeId: this.store._id
       };
       this.newPriceDocuments.push(document);
     }
@@ -220,7 +220,7 @@ export default class StoreUpdater {
     const promises: Promise<UpdateResult>[] = [];
     const options = { upsert: true };
     for (const document of documents) {
-      const filter = { sku: document.sku, store_id: document.store_id };
+      const filter = { sku: document.sku, store_id: document.storeId };
       const update = { $set: document };
       promises.push(collection.updateOne(filter, update, options));
     }

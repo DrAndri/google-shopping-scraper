@@ -129,7 +129,8 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-logs/
-config.js
+/logs
 
-mongodb
+/mongodb
+/mongodb-*
+/mysql

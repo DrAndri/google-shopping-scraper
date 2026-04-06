@@ -59,7 +59,7 @@ export const createProductLogger = (
     });
     transportsArray.push(
       new transports.Console({
-        level: 'info',
+        level: 'warn',
         format: combine(
           colorize(),
           splat(),

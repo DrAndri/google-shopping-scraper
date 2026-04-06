@@ -1,17 +1,13 @@
 import { type ObjectId } from 'mongodb';
 import { ProductAttributeGroup } from './types.js';
 
-export interface StoreConfig {
-  name: string;
-  type: 'httpcrawler' | 'crawler' | 'scraper' | 'feed';
-  scraperEnabled: boolean;
-  apiEnabled: boolean;
-  options: WebScraperOptions | FeedOptions | WebshopCrawlerOptions;
+export interface StoreConfig extends Store {
+  options: WebshopCrawlerOptions;
 }
 
 export interface MongodbProductMetadata {
   sku: string;
-  store_id: ObjectId;
+  storeId: ObjectId;
   name?: string;
   brand?: string;
   ean?: string;
@@ -24,14 +20,86 @@ export interface MongodbProductMetadata {
 
 export interface MongodbProductPrice {
   sku: string;
-  store_id: ObjectId;
+  storeId: ObjectId;
   salePrice: boolean;
   price: number;
   start: number;
   end: number;
 }
 
+//Mariadb types
+
+export type DbId = number | bigint;
+
+export interface IdLookup {
+  id: DbId;
+}
+
+export interface Store {
+  id: DbId;
+  name: string;
+  createdDate: Date;
+  lastScanDate: Date;
+  scraperEnabled: boolean;
+  apiEnabled: boolean;
+}
+
+export interface Product {
+  id: DbId;
+  storeId: DbId;
+  manufacturerId?: DbId;
+  categoryId?: DbId;
+  sku: string;
+  name?: string;
+  image?: string;
+  ean?: string;
+  description?: string;
+  url?: string;
+  inStock?: boolean;
+  firstSeenDate: Date;
+  lastChangeDate: Date;
+}
+
+export interface ProductPrice {
+  productId: DbId;
+  price: number;
+  start: Date;
+  end: Date;
+}
+
+export interface Category {
+  id: DbId;
+  parentId?: DbId;
+  name: string;
+}
+
+export interface Manufacturer {
+  id: DbId;
+  name: string;
+}
+
+export interface AttributeGroup {
+  id: DbId;
+  name: string;
+}
+
+export interface Attribute {
+  id: DbId;
+  groupId: DbId;
+  name: string;
+}
+
+export interface AttributeToProduct {
+  attributeId: DbId;
+  productId: DbId;
+  value: string;
+}
+
+//END Mariadb types
+
 export interface WebshopCrawlerOptions {
+  storeId: DbId;
+  type: 'httpcrawler' | 'crawler';
   startUrl: string;
   selectors: ProductSelectors;
   sanitizers?: ProductSanitizers;
@@ -67,17 +135,17 @@ export interface ProductSelector {
 
 export interface ProductSelectors {
   productPage: string;
-  oldPrice: string;
+  oldPrice?: string;
   listPrice: string;
   name: string;
   sku: string | ProductSelector;
-  image: string;
+  image?: string;
   brand?: string;
-  description: string;
+  description?: string;
   inStock?: string;
   inStockText?: string;
   clickers?: string[];
-  categories: string;
+  categories?: string;
   categorySplitter?: string;
   categoryItemLocator?: string;
   attributes?: AttributeSelectors;
@@ -105,11 +173,4 @@ export interface ProductItemClasses {
 
 export interface FeedOptions {
   feedUrl: string;
-}
-
-export interface StorePage {
-  url: string;
-  lastCrawled: number;
-  store_id: ObjectId;
-  sku: string;
 }

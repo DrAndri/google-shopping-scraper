@@ -5,6 +5,10 @@ services:
       dockerfile: Dockerfile
     environment:
       MONGODB_URI: ${MONGODB_URI}
+      MARIADB_HOST: ${MARIADB_HOST}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_SCRAPER_USER: ${MARIADB_SCRAPER_USER}
+      MARIADB_SCRAPER_PASSWORD: ${MARIADB_SCRAPER_PASSWORD}
       RUN_STARTUP_UPDATE: ${RUN_STARTUP_UPDATE}
       STORE_CONCURRENCY_LIMIT: ${STORE_CONCURRENCY_LIMIT}
       CRON_SCHEDULE: ${CRON_SCHEDULE}
@@ -25,7 +29,7 @@ services:
       - 3000:3000
 
   mongo:
-    image: mongo
+    image: mongo:7
     restart: always
     volumes:
       - ./mongodb:/data/db
@@ -42,3 +46,25 @@ services:
       ME_CONFIG_MONGODB_ADMINUSERNAME: andri
       ME_CONFIG_MONGODB_ADMINPASSWORD: MongoAdminMatti
       ME_CONFIG_MONGODB_URL: ${MONGODB_URI}
+
+  mongo-migrate:
+    image: mongo:7
+    restart: always
+    volumes:
+      - ./mongodb-prod-05.04.2026/mongodb:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: andri
+      MONGO_INITDB_ROOT_PASSWORD: MongoMasterMikael
+
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_AUTO_UPGRADE: true
+    ports:
+      - '3306:3306'
+    volumes:
+      - ./mysql:/var/lib/mysql
+      - ./initMariaDb:/docker-entrypoint-initdb.d # Optional: Run .sql scripts on startup

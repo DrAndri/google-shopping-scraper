@@ -8,12 +8,7 @@ import {
   RequestQueue,
   type Request
 } from 'crawlee';
-import {
-  CacheItems,
-  ProductSnapshot,
-  StoreConfig,
-  WebshopCrawlerOptions
-} from '../types/index.js';
+import { CacheItems, ProductSnapshot, StoreConfig } from '../types/index.js';
 import { createProductLogger, createStoreLogger } from '../logger.js';
 import PageScraper from './PageScraper.js';
 import { Locator, Page } from 'playwright';
@@ -80,13 +75,20 @@ const blockedPageUrlPatterns = [
 
 export default class WebshopCrawler {
   store: StoreConfig;
-  batchTimestamp: number;
-  constructor(store: StoreConfig, batchTimestamp: number) {
+  batchTimestamp: Date;
+  updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>;
+
+  constructor(
+    store: StoreConfig,
+    batchTimestamp: Date,
+    updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>
+  ) {
     this.store = store;
     this.batchTimestamp = batchTimestamp;
+    this.updateProductInDb = updateProductInDb;
   }
 
-  async crawlSite(): Promise<ProductSnapshot[]> {
+  async crawlSite(): Promise<void> {
     const cache: CacheItems = {};
     const safeStoreName = this.store.name.replace(/[^a-zA-Z0-9]/g, '-');
     const {
@@ -98,9 +100,8 @@ export default class WebshopCrawler {
       urlBlacklist,
       scrollPagesToBottom,
       menuClicker
-    } = this.store.options as WebshopCrawlerOptions;
+    } = this.store.options;
     const store = this.store;
-    const batchTimestamp = this.batchTimestamp;
 
     let totalRequests = 0,
       totalProcessed = 0,
@@ -113,11 +114,6 @@ export default class WebshopCrawler {
       inStockError = 0,
       categoriesError = 0;
 
-    const productMap: Map<string, ProductSnapshot> = new Map<
-      string,
-      ProductSnapshot
-    >();
-
     const memoryStorage = new MemoryStorage({
       persistStorage: false,
       writeMetadata: false
@@ -126,12 +122,7 @@ export default class WebshopCrawler {
       storageClient: memoryStorage
     });
 
-    const pageScraper = new PageScraper(
-      selectors,
-      sanitizers,
-      categoryBanList,
-      batchTimestamp
-    );
+    const pageScraper = new PageScraper(selectors, sanitizers, categoryBanList);
 
     const once = (
       checkFn: () => Promise<false | Locator>,
@@ -200,7 +191,7 @@ export default class WebshopCrawler {
       const logger = createProductLogger(
         request.loadedUrl ?? 'default label',
         store.name,
-        batchTimestamp
+        this.batchTimestamp.getTime()
       );
 
       if (productLocator) {
@@ -214,7 +205,6 @@ export default class WebshopCrawler {
 
           if (scrapeResult !== undefined) {
             const scrapedProduct = scrapeResult.product;
-            productMap.set(scrapedProduct.sku, scrapedProduct);
             if (scrapeResult.errors.description) descriptionError++;
             if (scrapeResult.errors.attributes) attributeError++;
             if (scrapeResult.errors.image) imageError++;
@@ -223,6 +213,7 @@ export default class WebshopCrawler {
             if (scrapeResult.errors.inStock) inStockError++;
             if (scrapeResult.errors.categories) categoriesError++;
             totalProcessed++;
+            await this.updateProductInDb(scrapedProduct);
           }
         } catch (e) {
           logger.log(
@@ -541,6 +532,6 @@ export default class WebshopCrawler {
     storeLogger.log('info', `Categories errors: ${categoriesError}`);
     storeLogger.close();
 
-    return Array.from(productMap, ([, value]) => value);
+    return;
   }
 }

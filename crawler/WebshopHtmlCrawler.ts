@@ -10,11 +10,7 @@ import {
   RequestQueue,
   type Request
 } from 'crawlee';
-import {
-  ProductSnapshot,
-  StoreConfig,
-  WebshopCrawlerOptions
-} from '../types/index.js';
+import { ProductSnapshot, StoreConfig } from '../types/index.js';
 import { createProductLogger, createStoreLogger } from '../logger.js';
 import PageHtmlScraper from './PageHtmlScraper.js';
 
@@ -44,13 +40,19 @@ const blockedNavigationPathEndings = [
 
 export default class WebshopHtmlCrawler {
   store: StoreConfig;
-  batchTimestamp: number;
-  constructor(store: StoreConfig, batchTimestamp: number) {
+  batchTimestamp: Date;
+  updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>;
+  constructor(
+    store: StoreConfig,
+    batchTimestamp: Date,
+    updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>
+  ) {
     this.store = store;
     this.batchTimestamp = batchTimestamp;
+    this.updateProductInDb = updateProductInDb;
   }
 
-  async crawlSite(): Promise<ProductSnapshot[]> {
+  async crawlSite(): Promise<void> {
     const safeStoreName = this.store.name.replace(/[^a-zA-Z0-9]/g, '-');
     const {
       startUrl,
@@ -59,7 +61,7 @@ export default class WebshopHtmlCrawler {
       sanitizers,
       urlWhitelist,
       urlBlacklist
-    } = this.store.options as WebshopCrawlerOptions;
+    } = this.store.options;
     const store = this.store;
     const batchTimestamp = this.batchTimestamp;
 
@@ -74,11 +76,6 @@ export default class WebshopHtmlCrawler {
       inStockError = 0,
       categoriesError = 0;
 
-    const productMap: Map<string, ProductSnapshot> = new Map<
-      string,
-      ProductSnapshot
-    >();
-
     const memoryStorage = new MemoryStorage({
       persistStorage: false,
       writeMetadata: false
@@ -90,8 +87,7 @@ export default class WebshopHtmlCrawler {
     const pageScraper = new PageHtmlScraper(
       selectors,
       sanitizers,
-      categoryBanList,
-      batchTimestamp
+      categoryBanList
     );
 
     const requestHandler: RequestHandler<
@@ -107,7 +103,7 @@ export default class WebshopHtmlCrawler {
       const logger = createProductLogger(
         request.loadedUrl ?? 'default label',
         store.name,
-        batchTimestamp
+        batchTimestamp.getTime()
       );
       const html = $.root().html();
       const identifierInHtml = html
@@ -132,7 +128,6 @@ export default class WebshopHtmlCrawler {
 
           if (scrapeResult !== undefined) {
             const scrapedProduct = scrapeResult.product;
-            productMap.set(scrapedProduct.sku, scrapedProduct);
             if (scrapeResult.errors.description) descriptionError++;
             if (scrapeResult.errors.attributes) attributeError++;
             if (scrapeResult.errors.image) imageError++;
@@ -141,6 +136,7 @@ export default class WebshopHtmlCrawler {
             if (scrapeResult.errors.inStock) inStockError++;
             if (scrapeResult.errors.categories) categoriesError++;
             totalProcessed++;
+            await this.updateProductInDb(scrapedProduct);
           }
         } catch (e) {
           logger.log(
@@ -301,6 +297,6 @@ export default class WebshopHtmlCrawler {
     storeLogger.log('info', `Categories errors: ${categoriesError}`);
     storeLogger.close();
 
-    return Array.from(productMap, ([, value]) => value);
+    return;
   }
 }

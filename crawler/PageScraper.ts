@@ -17,30 +17,28 @@ export default class PageScraper {
   selectors: ProductSelectors;
   sanitizers: ProductSanitizers | undefined;
   categoryBanList: string[];
-  batchTimestamp: number;
   constructor(
     selectors: ProductSelectors,
     sanitizers: ProductSanitizers | undefined,
-    categoryBanList: string[],
-    batchTimestamp: number
+    categoryBanList: string[]
   ) {
     this.selectors = selectors;
     this.sanitizers = sanitizers;
     this.categoryBanList = categoryBanList;
-    this.batchTimestamp = batchTimestamp;
   }
 
   async scrapePrices(productLocator: Locator): Promise<{
     listPrice: number;
     salePrice: number | undefined;
   }> {
-    const oldPriceLocator = this.selectors.oldPrice
-      ? productLocator.locator(this.selectors.oldPrice)
-      : null;
-    const oldPrice =
-      oldPriceLocator && (await oldPriceLocator.count()) === 1
-        ? await this.evalPrice(this.selectors.oldPrice, productLocator)
-        : undefined;
+    let oldPrice: number | undefined = undefined;
+    if (this.selectors.oldPrice) {
+      const oldPriceLocator = productLocator.locator(this.selectors.oldPrice);
+      oldPrice =
+        oldPriceLocator && (await oldPriceLocator.count()) === 1
+          ? await this.evalPrice(this.selectors.oldPrice, productLocator)
+          : undefined;
+    }
     const price = await this.evalPrice(
       this.selectors.listPrice,
       productLocator
@@ -303,7 +301,7 @@ export default class PageScraper {
     const product: ProductSnapshot = {
       sku: sku,
       price: listPrice,
-      sale_price: salePrice,
+      salePrice: salePrice,
       title: name,
       brand: brand,
       image: image,

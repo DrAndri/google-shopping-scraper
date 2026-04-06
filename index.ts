@@ -1,22 +1,20 @@
-import { Db, MongoClient, WithId } from 'mongodb';
-import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import { Db, MongoClient } from 'mongodb';
 import cron from 'node-cron';
-import fetch from 'node-fetch';
 import pLimit from 'p-limit';
-
-import StoreUpdater from './StoreUpdater.js';
 
 import * as dotenv from 'dotenv';
 import {
   StoreUpdateResult,
-  type GoogleMerchantFeed,
   StoreConfig,
-  ProductSnapshot,
-  FeedOptions
+  Store,
+  WebshopCrawlerOptions
 } from './types/index.js';
-// import WebshopScraper from './WebshopScraper.js';
 import WebshopCrawler from './crawler/WebshopCrawler.js';
 import WebshopHtmlCrawler from './crawler/WebshopHtmlCrawler.js';
+import { createPool } from 'mariadb';
+import SQLStoreUpdater, { poolConfig } from './SQLStoreUpdater.js';
+import { configs } from './crawler/storeConfigs.js';
+import migrate from './MongoToSQLMigrate.js';
 
 const storeConcurrencyLimit = parseInt(
   process.env.STORE_CONCURRENCY_LIMIT ?? '5'
@@ -27,99 +25,58 @@ dotenv.config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// TODO make proper interface for google shopping feed
-// https://github.com/xcommerceweb/google-merchant-feed/tree/main/src/models
-async function downloadFeed(url: URL): Promise<GoogleMerchantFeed> {
-  const response = await fetch(url).then((res) => res.text());
-  return await new Promise<GoogleMerchantFeed>((resolve, reject) => {
-    if (XMLValidator.validate(response) === true) {
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        parseAttributeValue: true,
-        numberParseOptions: {
-          hex: true,
-          leadingZeros: true,
-          skipLike: /\.[0-9]*0/
-        }
-      });
-      resolve(parser.parse(response) as GoogleMerchantFeed);
-    } else reject(new Error('Validation failed'));
-  });
-}
+const storesPool = createPool(poolConfig);
+const attributesPool = createPool(poolConfig);
+const categoriesPool = createPool(poolConfig);
+const manufacturersPool = createPool(poolConfig);
 
 async function updateStore(
-  store: StoreConfig,
-  storeUpdater: StoreUpdater
+  store: Store,
+  options: WebshopCrawlerOptions
 ): Promise<StoreUpdateResult> {
-  const timestamp = Math.floor(new Date().getTime() / 1000);
-  const thresholdTimestamp = timestamp - 172800; //48 hours
-  if (store.type === 'feed') {
-    const options = store.options as FeedOptions;
-    return downloadFeed(new URL(options.feedUrl))
-      .then((feed) => {
-        const promises = [];
-        for (const item of feed.rss.channel.item) {
-          const snapshot: ProductSnapshot = {
-            sku: item['g:id'],
-            sale_price: item['g:sale_price'],
-            price: item['g:price'],
-            title: item['g:title'],
-            gtin: item['g:gtin'],
-            brand: item['g:brand']
-          };
-          promises.push(
-            ...storeUpdater.updateProduct(
-              snapshot,
-              timestamp,
-              thresholdTimestamp
-            )
-          );
-        }
-        return Promise.all(promises);
-      })
-      .then(() => {
-        return storeUpdater.submitAllDocuments();
-      });
-    // } else if (store.type === 'scraper') {
-    //   const scraper = new WebshopScraper(store);
-    //   const products = await scraper.scrapeSite();
-    //   const promises = [];
-    //   for (const item of products) {
-    //     promises.push(
-    //       ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
-    //     );
-    //   }
-    //   return Promise.all(promises).then(() => {
-    //     return storeUpdater.submitAllDocuments();
-    //   });
-  } else if (store.type === 'crawler') {
-    const crawler = new WebshopCrawler(store, timestamp);
-    const products = await crawler.crawlSite();
-    const promises = [];
-    for (const item of products) {
-      promises.push(
-        ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
-      );
-    }
-    return Promise.all(promises).then(() => {
-      return storeUpdater.submitAllDocuments();
-    });
-  } else if (store.type === 'httpcrawler') {
-    const crawler = new WebshopHtmlCrawler(store, timestamp);
-    const products = await crawler.crawlSite();
-    const promises = [];
-    for (const item of products) {
-      promises.push(
-        ...storeUpdater.updateProduct(item, timestamp, thresholdTimestamp)
-      );
-    }
-    return Promise.all(promises).then(() => {
-      return storeUpdater.submitAllDocuments();
-    });
+  const currentDate = new Date();
+  currentDate.setHours(0, 0, 0, 0);
+  const storeConfig: StoreConfig = { options: options, ...store };
+  const storeUpdater = new SQLStoreUpdater(
+    storeConfig,
+    currentDate,
+    attributesPool,
+    categoriesPool,
+    manufacturersPool
+  );
+
+  if (options.type === 'crawler') {
+    const crawler = new WebshopCrawler(
+      storeConfig,
+      currentDate,
+      (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct)
+    );
+    await crawler.crawlSite();
+  } else if (options.type === 'httpcrawler') {
+    const crawler = new WebshopHtmlCrawler(
+      storeConfig,
+      currentDate,
+      (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct)
+    );
+    await crawler.crawlSite();
   } else
     return Promise.reject(
       new Error('Type not supported for store ' + store.name)
     );
+
+  await storesPool.getConnection().then(async (conn) => {
+    await conn.query('UPDATE stores SET lastScanDate = ? WHERE id = ?', [
+      currentDate,
+      store.id
+    ]);
+    await conn.release();
+  });
+  return {
+    store: storeConfig,
+    productMetadataUpsert: undefined,
+    priceUpdate: undefined,
+    newPrices: undefined
+  };
 }
 
 function reportResults(results: StoreUpdateResult): void {
@@ -140,41 +97,36 @@ function reportResults(results: StoreUpdateResult): void {
   );
 }
 
-async function getAllStores(db: Db): Promise<WithId<StoreConfig>[]> {
-  const cursor = db.collection<StoreConfig>('stores').find(
-    { scraperEnabled: true },
-    {
-      projection: {
-        _id: 1,
-        feedUrl: 1,
-        name: 1,
-        options: 1,
-        type: 1,
-        scraperEnabled: 1
-      }
-    }
-  );
-  return await cursor.toArray();
+async function getAllStores(): Promise<Store[]> {
+  return storesPool.getConnection().then(async (conn) => {
+    const res = conn.query<Store[]>(
+      'SELECT * FROM stores WHERE scraperEnabled = true'
+    );
+    await conn.release();
+    return res;
+  });
 }
 
-async function updateAllStores(mongodb: Db): Promise<void> {
-  const stores = await getAllStores(mongodb);
+async function updateAllStores(): Promise<void> {
+  const stores = await getAllStores();
   console.log(stores);
   const promises = [];
   for (const store of stores) {
     console.log('UPDATING', store.name);
-
-    const storeUpdater = new StoreUpdater(mongodb, store);
-
-    promises.push(
-      limit(() =>
-        updateStore(store, storeUpdater)
-          .then(reportResults)
-          .catch((error) => {
-            console.log('Error updating store ' + store.name, error);
-          })
-      )
-    );
+    const options = configs.find((config) => config.storeId === store.id);
+    if (options !== undefined) {
+      promises.push(
+        limit(() =>
+          updateStore(store, options)
+            .then(reportResults)
+            .catch((error) => {
+              console.log('Error updating store ' + store.name, error);
+            })
+        )
+      );
+    } else {
+      console.log('No config found for store ' + store.name);
+    }
   }
   await Promise.all(promises).then(() => {
     console.log('ALL STORES UPDATED');
@@ -201,12 +153,17 @@ async function getMongodb(): Promise<Db> {
 const mongoDb = await getMongodb();
 await initMongodbCollections(mongoDb);
 
-if (process.env.RUN_STARTUP_UPDATE === 'true') {
-  console.log('Running startup update');
-  updateAllStores(mongoDb).catch((error) => console.log(error));
+if (process.env.RUN_MONGO_TO_SQL_MIGRATION === 'true') {
+  console.log('Running migration');
+  await migrate(mongoDb).catch((error) => console.log(error));
 }
 
-if (process.env.CRON_SCHEDULE !== undefined) {
+if (process.env.RUN_STARTUP_UPDATE === 'true') {
+  console.log('Running startup update');
+  updateAllStores().catch((error) => console.log(error));
+}
+
+if (process.env.CRON_SCHEDULE) {
   cron.schedule(process.env.CRON_SCHEDULE, () => {
     console.log('Updating all stores');
     getMongodb()

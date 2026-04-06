@@ -17,30 +17,23 @@ export default class PageHtmlScraper {
   selectors: ProductSelectors;
   sanitizers: ProductSanitizers | undefined;
   categoryBanList: string[];
-  batchTimestamp: number;
   constructor(
     selectors: ProductSelectors,
     sanitizers: ProductSanitizers | undefined,
-    categoryBanList: string[],
-    batchTimestamp: number
+    categoryBanList: string[]
   ) {
     this.selectors = selectors;
     this.sanitizers = sanitizers;
     this.categoryBanList = categoryBanList;
-    this.batchTimestamp = batchTimestamp;
   }
 
   scrapePrices($: CheerioAPI): {
     listPrice: number;
     salePrice: number | undefined;
   } {
-    const oldPriceLocator = this.selectors.oldPrice
-      ? $(this.getSelector(this.selectors.oldPrice))
-      : null;
-    const oldPrice =
-      oldPriceLocator?.length === 1
-        ? this.evalPrice(this.selectors.oldPrice, $)
-        : undefined;
+    const oldPrice = this.selectors.oldPrice
+      ? this.evalPrice(this.selectors.oldPrice, $)
+      : undefined;
     const price = this.evalPrice(this.selectors.listPrice, $);
     expect(price).toBeTruthy();
     const listPrice = oldPrice && oldPrice > 0 ? oldPrice : price;
@@ -106,13 +99,51 @@ export default class PageHtmlScraper {
       const attributeTableLocator = $(
         this.getSelector(selectors.attributesTable)
       ).filter(function () {
-        return $(this).find(selectors.attribute).length > 0;
+        //TODO: reduntant code
+        if (selectors.attributeGroup) {
+          const attributeGroups = $(this)
+            .find(selectors.attributeGroup)
+            .filter(function () {
+              const attributes = $(this).find(selectors.attribute);
+              return (
+                attributes.filter(function () {
+                  return (
+                    $(this).find(selectors.attributeLabel).length > 0 &&
+                    $(this).find(selectors.attributeValue).length > 0
+                  );
+                }).length > 0
+              );
+            });
+          return attributeGroups.length > 0;
+        } else {
+          const attributes = $(this).find(selectors.attribute);
+          return (
+            attributes.filter(function () {
+              return (
+                $(this).find(selectors.attributeLabel).length > 0 &&
+                $(this).find(selectors.attributeValue).length > 0
+              );
+            }).length > 0
+          );
+        }
       });
 
       if (attributeTableLocator.length > 0) {
         for (const oneTable of attributeTableLocator.toArray()) {
           const attributeGroupsLocator = selectors.attributeGroup
-            ? $(oneTable).find(selectors.attributeGroup)
+            ? $(oneTable)
+                .find(selectors.attributeGroup)
+                .filter(function () {
+                  const attributes = $(this).find(selectors.attribute);
+                  return (
+                    attributes.filter(function () {
+                      return (
+                        $(this).find(selectors.attributeLabel).length > 0 &&
+                        $(this).find(selectors.attributeValue).length > 0
+                      );
+                    }).length > 0
+                  );
+                })
             : $(oneTable);
           const groupCount = attributeGroupsLocator.length;
           if (groupCount > 0) {
@@ -120,7 +151,9 @@ export default class PageHtmlScraper {
               const groupName = selectors.attributeGroupName
                 ? ($(attributeGroupLocator)
                     .find(selectors.attributeGroupName)
-                    .text().trim() ?? 'Óflokkað')
+                    .first()
+                    .text()
+                    .trim() ?? 'Óflokkað')
                 : 'Óflokkað';
               const attributeLocator = $(attributeGroupLocator)
                 .find(selectors.attribute)
@@ -244,7 +277,7 @@ export default class PageHtmlScraper {
     const product: ProductSnapshot = {
       sku: sku,
       price: listPrice,
-      sale_price: salePrice,
+      salePrice: salePrice,
       title: name,
       brand: brand,
       image: image,
@@ -271,7 +304,7 @@ export default class PageHtmlScraper {
 
   evalText(selector: string, $: CheerioAPI) {
     const textNode = $(this.getSelector(selector));
-    return textNode.text().trim();
+    return textNode.first().text().trim();
   }
 
   evalPrice(selector: string, $: CheerioAPI) {
