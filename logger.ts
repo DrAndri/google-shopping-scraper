@@ -33,7 +33,7 @@ export const createStoreLogger = (label: string) => {
 export const createProductLogger = (
   label: string,
   storeName: string,
-  batchTimestamp: number
+  currentDate: Date
 ) => {
   const transportsArray = [];
   if (LOKI_URL) {
@@ -42,7 +42,7 @@ export const createProductLogger = (
         host: LOKI_URL,
         labels: {
           store: storeName,
-          batch: batchTimestamp.toString(),
+          batch: currentDate,
           page: label
         },
         format: combine(splat(), errors({ stack: true }), format.json()),

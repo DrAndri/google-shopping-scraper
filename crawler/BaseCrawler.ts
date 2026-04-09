@@ -1,166 +1,195 @@
-/* import {
-  Configuration,
+import {
+  CheerioCrawler,
+  CheerioCrawlerOptions,
   Log,
-  MemoryStorage,
-  RequestQueue,
-  type Request
+  PlaywrightCrawler,
+  PlaywrightCrawlerOptions,
+  RequestQueue
 } from 'crawlee';
-import { CacheItems, ProductSnapshot, StoreConfig } from '../types/index.js';
-import { createProductLogger, createStoreLogger } from '../logger.js';
-import PageScraper from './PageScraper.js';
-import { Locator, Page } from 'playwright';
+import {
+  ProductScrapeResult,
+  ProductSnapshot,
+  ScrapeResult,
+  StoreConfig
+} from '../types/index.js';
+import { createStoreLogger } from '../logger.js';
+import { Logger } from 'winston';
+import {
+  absoluteUrlRegExp,
+  blockedNavigationPathEndings
+} from './constants.js';
 
-const defaultImage = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IB2cksfwAAAARnQU1BAACxjwv8YQUAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAxJREFUCNdj+P//PwAF/gL+3MxZ5wAAAABJRU5ErkJggg==',
-  'base64'
-);
-const absoluteUrlRegExp = new RegExp('^(?:[a-z+]+:)?//', 'i');
-const categoryBanList = [
-  'forsíða',
-  'heim',
-  'vörur',
-  'allar vörur',
-  'til baka',
-  'leitarniðurstöður'
-];
-const blockedPageResourceTypes = [
-  'image',
-  'stylesheet',
-  'media',
-  'font',
-  'websocket',
-  'other'
-];
-const blockedNavigationPathEndings = [
-  '.pdf',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.svg',
-  '.webp',
-  '.mp3',
-  '.mp4',
-  '.zip',
-  '.xlsx',
-  '.xls'
-];
-const blockedPagePathEndings = [
-  ...blockedNavigationPathEndings,
-  '.css',
-  '.gif',
-  '.webm',
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.otf'
-];
-const blockedPageUrlPatterns = [
-  'google-analytics.com',
-  'google.com',
-  'google.is',
-  'googleads.g.doubleclick.net',
-  'googletagmanager.com',
-  'adsbygoogle.js',
-  'hubspot.com',
-  'hubapi.com',
-  'hsappstatic.net',
-  'youtube.com',
-  'youtu.be',
-  'youtube-nocookie.com',
-  'addthis.com'
-];
-
-export default class BaseCrawler {
+export default abstract class BaseCrawler {
   store: StoreConfig;
-  batchTimestamp: Date;
+  currentDate: Date;
   updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>;
+  result: ScrapeResult;
+  crawler: CheerioCrawler | PlaywrightCrawler;
 
   constructor(
     store: StoreConfig,
-    batchTimestamp: Date,
-    updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>
+    currentDate: Date,
+    updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>,
+    requestQueue: RequestQueue
   ) {
     this.store = store;
-    this.batchTimestamp = batchTimestamp;
+    this.currentDate = currentDate;
     this.updateProductInDb = updateProductInDb;
+    this.result = {
+      totalRequests: 0,
+      totalProcessed: 0,
+      totalErrored: 0,
+      descriptionError: 0,
+      attributeError: 0,
+      imageError: 0,
+      brandError: 0,
+      nameError: 0,
+      inStockError: 0,
+      categoriesError: 0
+    };
+    this.crawler = this.setupCrawler(this.getConfiguration(requestQueue));
   }
 
-  async crawlSite(): Promise<ProductSnapshot[]> {
-    const safeStoreName = this.store.name.replace(/[^a-zA-Z0-9]/g, '-');
-    const {
-      startUrl,
-      selectors,
-      productPageIdentifier,
-      sanitizers,
-      urlWhitelist,
-      urlBlacklist,
-      scrollPagesToBottom,
-      menuClicker
-    } = this.store.options;
-    const store = this.store;
+  async handleProductScrapeResult(scrapeResult: ProductScrapeResult) {
+    if (scrapeResult !== undefined) {
+      if (scrapeResult.errors.description) this.result.descriptionError++;
+      if (scrapeResult.errors.attributes) this.result.attributeError++;
+      if (scrapeResult.errors.image) this.result.imageError++;
+      if (scrapeResult.errors.brand) this.result.brandError++;
+      if (scrapeResult.errors.name) this.result.nameError++;
+      if (scrapeResult.errors.inStock) this.result.inStockError++;
+      if (scrapeResult.errors.categories) this.result.categoriesError++;
+      this.result.totalProcessed++;
+      await this.updateProductInDb(scrapeResult.product);
+    }
+  }
 
-    let totalRequests = 0,
-      totalProcessed = 0,
-      totalErrored = 0,
-      descriptionError = 0,
-      attributeError = 0,
-      imageError = 0,
-      brandError = 0,
-      nameError = 0,
-      inStockError = 0,
-      categoriesError = 0;
+  handleProductScrapeError(logger: Logger, e: unknown, url?: string) {
+    logger.log('error', 'Error processing product from url %s', url);
+    logger.log('error', '%O', e);
+    this.result.totalErrored++;
+  }
 
-    const productMap: Map<string, ProductSnapshot> = new Map<
-      string,
-      ProductSnapshot
-    >();
-
-    const memoryStorage = new MemoryStorage({
-      persistStorage: false,
-      writeMetadata: false
-    });
-    const requestQueue = await RequestQueue.open(safeStoreName, {
-      storageClient: memoryStorage
+  async filterAndAddLinksToQueue(links: string[]) {
+    const startUrl = this.store.options.startUrl;
+    const urlWhitelist = this.store.options.urlWhitelist;
+    const urlBlacklist = this.store.options.urlBlacklist;
+    const { hostname } = new URL(startUrl);
+    const hostnameIncludesWww = hostname.startsWith('www.');
+    const absoluteUrls = links.map((link) => {
+      if (absoluteUrlRegExp.test(link)) return URL.parse(link);
+      else return new URL(link, startUrl);
     });
 
-    const pageScraper = new PageScraper(selectors, sanitizers, categoryBanList);
+    // Filter out urls that do not match whitelist or match blacklist
+    //TODO: remove or implement per site filter lists
+    let filteredUrls = absoluteUrls.filter((url) => url !== null);
+    if (urlWhitelist !== undefined && urlWhitelist.length > 0) {
+      filteredUrls = filteredUrls.filter((url) => {
+        return urlWhitelist.some((whitelistEntry) => {
+          return url.pathname.startsWith(whitelistEntry);
+        });
+      });
+    }
 
+    if (urlBlacklist !== undefined && urlBlacklist.length > 0) {
+      filteredUrls = filteredUrls.filter((url) => {
+        return !urlBlacklist.some((blacklistEntry) => {
+          return url.pathname.startsWith(blacklistEntry);
+        });
+      });
+    }
 
-    //requestHandler
+    // We use the hostname to filter links that point
+    // to a different domain, even subdomain.
+    const sameHostnameLinks = filteredUrls
+      .filter(
+        (url) =>
+          url.hostname === hostname ||
+          (hostnameIncludesWww
+            ? 'www.' + url.hostname === hostname
+            : url.hostname === 'www.' + hostname)
+      )
+      .map((url) => url.href);
 
+    // Finally, we have to add the URLs to the queue
+    await this.crawler?.addRequests(
+      sameHostnameLinks.filter(
+        (url) =>
+          !blockedNavigationPathEndings.find((ending) => url.endsWith(ending))
+      ),
+      { batchSize: 10 }
+    );
+  }
 
-    //const addLinksToQueue = async (page: Page) => {
+  getConfiguration(
+    requestQueue: RequestQueue
+  ): CheerioCrawlerOptions | PlaywrightCrawlerOptions {
+    const crawlLog = new Log({ prefix: this.store.name });
 
+    // const config = Configuration.getGlobalConfig();
 
-    
-
-    const crawlLog = new Log({ prefix: store.name });
-
-    const config = Configuration.getGlobalConfig();
-
-    config.set('persistStorage', 'false');
+    // config.set('persistStorage', 'false');
     // config.set('storageDir', '/dev/shm');
 
-    //TODO: run crawler
+    const configuration: CheerioCrawlerOptions | PlaywrightCrawlerOptions = {
+      // Default is to reuse requestQueue from all crawl instances
+      requestQueue: requestQueue,
+      statisticsOptions: {
+        logIntervalSecs: 600 // 10 minutes
+      },
 
-    await requestQueue.drop();
+      sessionPoolOptions: {
+        persistStateKeyValueStoreId: `${this.store.safeStoreName}-keyvalue`,
+        persistStateKey: `${this.store.safeStoreName}-session-pool`
+      },
+      maxRequestsPerCrawl: 30000,
+      maxRequestsPerMinute: 30,
+      maxRequestRetries: 3,
+      requestHandlerTimeoutSecs: 240,
+      navigationTimeoutSecs: 120,
+      respectRobotsTxtFile: false,
+      retryOnBlocked: true,
+      autoscaledPoolOptions: {
+        loggingIntervalSecs: 600,
+        snapshotterOptions: {
+          clientSnapshotIntervalSecs: 30,
+          eventLoopSnapshotIntervalSecs: 30,
+          maxBlockedMillis: 50
+        }
+      },
+      log: crawlLog
+    };
+    return configuration;
+  }
 
-    const storeLogger = createStoreLogger(store.name);
+  async crawlSite(): Promise<void> {
+    await this.crawler.run([this.store.options.startUrl]);
 
-    storeLogger.log('info', `Crawl of store ${store.name} completed.`);
-    storeLogger.log('info', `Total requests: ${totalRequests}`);
-    storeLogger.log('info', `Total processed: ${totalProcessed}`);
-    storeLogger.log('info', `Total errored: ${totalErrored}`);
-    storeLogger.log('info', `Description errors: ${descriptionError}`);
-    storeLogger.log('info', `Attribute errors: ${attributeError}`);
-    storeLogger.log('info', `Image errors: ${imageError}`);
-    storeLogger.log('info', `Brand errors: ${brandError}`);
-    storeLogger.log('info', `Name errors: ${nameError}`);
-    storeLogger.log('info', `InStock errors: ${inStockError}`);
-    storeLogger.log('info', `Categories errors: ${categoriesError}`);
+    const storeLogger = createStoreLogger(this.store.name);
+
+    storeLogger.log('info', `Crawl of store ${this.store.name} completed.`);
+    storeLogger.log('info', `Total requests: ${this.result.totalRequests}`);
+    storeLogger.log('info', `Total processed: ${this.result.totalProcessed}`);
+    storeLogger.log('info', `Total errored: ${this.result.totalErrored}`);
+    storeLogger.log(
+      'info',
+      `Description errors: ${this.result.descriptionError}`
+    );
+    storeLogger.log('info', `Attribute errors: ${this.result.attributeError}`);
+    storeLogger.log('info', `Image errors: ${this.result.imageError}`);
+    storeLogger.log('info', `Brand errors: ${this.result.brandError}`);
+    storeLogger.log('info', `Name errors: ${this.result.nameError}`);
+    storeLogger.log('info', `InStock errors: ${this.result.inStockError}`);
+    storeLogger.log(
+      'info',
+      `Categories errors: ${this.result.categoriesError}`
+    );
     storeLogger.close();
 
-    return Array.from(productMap, ([, value]) => value);
+    return;
   }
+  abstract setupCrawler(
+    configuration: CheerioCrawlerOptions | PlaywrightCrawlerOptions
+  ): CheerioCrawler | PlaywrightCrawler;
 }
- */

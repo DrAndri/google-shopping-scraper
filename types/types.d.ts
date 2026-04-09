@@ -9,6 +9,32 @@ export interface GoogleMerchantFeed {
   };
 }
 
+export interface ProductScrapeResult {
+  product: ProductSnapshot;
+  errors: {
+    description: boolean;
+    attributes: boolean;
+    image: boolean;
+    brand: boolean;
+    name: boolean;
+    inStock: boolean;
+    categories: boolean;
+  };
+}
+
+export interface ScrapeResult {
+  totalRequests: number;
+  totalProcessed: number;
+  totalErrored: number;
+  descriptionError: number;
+  attributeError: number;
+  imageError: number;
+  brandError: number;
+  nameError: number;
+  inStockError: number;
+  categoriesError: number;
+}
+
 export interface ProductSnapshot {
   sku: string;
   price: number;

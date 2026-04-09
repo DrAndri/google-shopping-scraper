@@ -3,6 +3,7 @@ import { ProductAttributeGroup } from './types.js';
 
 export interface StoreConfig extends Store {
   options: WebshopCrawlerOptions;
+  safeStoreName: string;
 }
 
 export interface MongodbProductMetadata {

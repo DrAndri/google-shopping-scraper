@@ -21,7 +21,8 @@ export const poolConfig: PoolConfig = {
   database: process.env.MARIADB_DATABASE,
   user: process.env.MARIADB_SCRAPER_USER,
   password: process.env.MARIADB_SCRAPER_PASSWORD,
-  connectionLimit: 1
+  connectionLimit: 1,
+  acquireTimeout: 30000
 };
 
 export default class SQLStoreUpdater {

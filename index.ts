@@ -15,6 +15,7 @@ import { createPool } from 'mariadb';
 import SQLStoreUpdater, { poolConfig } from './SQLStoreUpdater.js';
 import { configs } from './crawler/storeConfigs.js';
 import migrate from './MongoToSQLMigrate.js';
+import { MemoryStorage, RequestQueue } from 'crawlee';
 
 const storeConcurrencyLimit = parseInt(
   process.env.STORE_CONCURRENCY_LIMIT ?? '5'
@@ -36,7 +37,12 @@ async function updateStore(
 ): Promise<StoreUpdateResult> {
   const currentDate = new Date();
   currentDate.setHours(0, 0, 0, 0);
-  const storeConfig: StoreConfig = { options: options, ...store };
+  const safeStoreName = store.name.replace(/[^a-zA-Z0-9]/g, '-');
+  const storeConfig: StoreConfig = {
+    options: options,
+    safeStoreName: safeStoreName,
+    ...store
+  };
   const storeUpdater = new SQLStoreUpdater(
     storeConfig,
     currentDate,
@@ -44,26 +50,34 @@ async function updateStore(
     categoriesPool,
     manufacturersPool
   );
-
+  const memoryStorage = new MemoryStorage({
+    persistStorage: false,
+    writeMetadata: false
+  });
+  const requestQueue = await RequestQueue.open(safeStoreName, {
+    storageClient: memoryStorage
+  });
   if (options.type === 'crawler') {
     const crawler = new WebshopCrawler(
       storeConfig,
       currentDate,
-      (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct)
+      (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct),
+      requestQueue
     );
     await crawler.crawlSite();
   } else if (options.type === 'httpcrawler') {
     const crawler = new WebshopHtmlCrawler(
       storeConfig,
       currentDate,
-      (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct)
+      (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct),
+      requestQueue
     );
     await crawler.crawlSite();
   } else
     return Promise.reject(
       new Error('Type not supported for store ' + store.name)
     );
-
+  await requestQueue.drop();
   await storesPool.getConnection().then(async (conn) => {
     await conn.query('UPDATE stores SET lastScanDate = ? WHERE id = ?', [
       currentDate,

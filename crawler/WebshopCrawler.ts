@@ -1,126 +1,36 @@
 import {
-  Configuration,
   Log,
-  MemoryStorage,
   PlaywrightCrawler,
+  PlaywrightCrawlerOptions,
   PlaywrightCrawlingContext,
   PlaywrightGotoOptions,
-  RequestQueue,
   type Request
 } from 'crawlee';
-import { CacheItems, ProductSnapshot, StoreConfig } from '../types/index.js';
-import { createProductLogger, createStoreLogger } from '../logger.js';
+import { CacheItems } from '../types/index.js';
+import { createProductLogger } from '../logger.js';
 import PageScraper from './PageScraper.js';
 import { Locator, Page } from 'playwright';
+import BaseCrawler from './BaseCrawler.js';
+import {
+  blockedPagePathEndings,
+  blockedPageResourceTypes,
+  blockedPageUrlPatterns,
+  categoryBanList,
+  defaultImage
+} from './constants.js';
 
-const defaultImage = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IB2cksfwAAAARnQU1BAACxjwv8YQUAAAAgY0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAlwSFlzAAAuIwAALiMBeKU/dgAAAAxJREFUCNdj+P//PwAF/gL+3MxZ5wAAAABJRU5ErkJggg==',
-  'base64'
-);
-const absoluteUrlRegExp = new RegExp('^(?:[a-z+]+:)?//', 'i');
-const categoryBanList = [
-  'forsíða',
-  'heim',
-  'vörur',
-  'allar vörur',
-  'til baka',
-  'leitarniðurstöður'
-];
-const blockedPageResourceTypes = [
-  'image',
-  'stylesheet',
-  'media',
-  'font',
-  'websocket',
-  'other'
-];
-const blockedNavigationPathEndings = [
-  '.pdf',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.svg',
-  '.webp',
-  '.mp3',
-  '.mp4',
-  '.zip',
-  '.xlsx',
-  '.xls'
-];
-const blockedPagePathEndings = [
-  ...blockedNavigationPathEndings,
-  '.css',
-  '.gif',
-  '.webm',
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.otf'
-];
-const blockedPageUrlPatterns = [
-  'google-analytics.com',
-  'google.com',
-  'google.is',
-  'googleads.g.doubleclick.net',
-  'googletagmanager.com',
-  'adsbygoogle.js',
-  'hubspot.com',
-  'hubapi.com',
-  'hsappstatic.net',
-  'youtube.com',
-  'youtu.be',
-  'youtube-nocookie.com',
-  'addthis.com'
-];
-
-export default class WebshopCrawler {
-  store: StoreConfig;
-  batchTimestamp: Date;
-  updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>;
-
-  constructor(
-    store: StoreConfig,
-    batchTimestamp: Date,
-    updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>
-  ) {
-    this.store = store;
-    this.batchTimestamp = batchTimestamp;
-    this.updateProductInDb = updateProductInDb;
-  }
-
-  async crawlSite(): Promise<void> {
+export default class WebshopCrawler extends BaseCrawler {
+  setupCrawler(configuration: PlaywrightCrawlerOptions) {
     const cache: CacheItems = {};
-    const safeStoreName = this.store.name.replace(/[^a-zA-Z0-9]/g, '-');
     const {
       startUrl,
       selectors,
       productPageIdentifier,
       sanitizers,
-      urlWhitelist,
-      urlBlacklist,
       scrollPagesToBottom,
       menuClicker
     } = this.store.options;
     const store = this.store;
-
-    let totalRequests = 0,
-      totalProcessed = 0,
-      totalErrored = 0,
-      descriptionError = 0,
-      attributeError = 0,
-      imageError = 0,
-      brandError = 0,
-      nameError = 0,
-      inStockError = 0,
-      categoriesError = 0;
-
-    const memoryStorage = new MemoryStorage({
-      persistStorage: false,
-      writeMetadata: false
-    });
-    const requestQueue = await RequestQueue.open(safeStoreName, {
-      storageClient: memoryStorage
-    });
 
     const pageScraper = new PageScraper(selectors, sanitizers, categoryBanList);
 
@@ -175,7 +85,7 @@ export default class WebshopCrawler {
       request: Request;
       page: Page;
     }) => {
-      totalRequests++;
+      this.result.totalRequests++;
       await page.waitForLoadState('load');
       // await page
       //   .waitForLoadState('networkidle', { timeout: 30000 })
@@ -191,7 +101,7 @@ export default class WebshopCrawler {
       const logger = createProductLogger(
         request.loadedUrl ?? 'default label',
         store.name,
-        this.batchTimestamp.getTime()
+        this.currentDate
       );
 
       if (productLocator) {
@@ -203,26 +113,9 @@ export default class WebshopCrawler {
             logger
           );
 
-          if (scrapeResult !== undefined) {
-            const scrapedProduct = scrapeResult.product;
-            if (scrapeResult.errors.description) descriptionError++;
-            if (scrapeResult.errors.attributes) attributeError++;
-            if (scrapeResult.errors.image) imageError++;
-            if (scrapeResult.errors.brand) brandError++;
-            if (scrapeResult.errors.name) nameError++;
-            if (scrapeResult.errors.inStock) inStockError++;
-            if (scrapeResult.errors.categories) categoriesError++;
-            totalProcessed++;
-            await this.updateProductInDb(scrapedProduct);
-          }
+          await this.handleProductScrapeResult(scrapeResult);
         } catch (e) {
-          logger.log(
-            'error',
-            'Error processing product from url %s',
-            request.loadedUrl
-          );
-          logger.log('error', '%O', e);
-          totalErrored++;
+          this.handleProductScrapeError(logger, e, request.loadedUrl);
         }
       } else {
         logger.log('info', 'url is not a product page: %s', request.loadedUrl);
@@ -281,52 +174,7 @@ export default class WebshopCrawler {
         )
         .then((links) => links.filter((link) => link !== null));
 
-      const { hostname } = new URL(startUrl);
-      const hostnameIncludesWww = hostname.startsWith('www.');
-      const absoluteUrls = links.map((link) => {
-        if (absoluteUrlRegExp.test(link)) return URL.parse(link);
-        else return new URL(link, startUrl);
-      });
-
-      // Filter out urls that do not match whitelist or match blacklist
-      //TODO: remove or implement per site filter lists
-      let filteredUrls = absoluteUrls.filter((url) => url !== null);
-      if (urlWhitelist !== undefined && urlWhitelist.length > 0) {
-        filteredUrls = filteredUrls.filter((url) => {
-          return urlWhitelist.some((whitelistEntry) => {
-            return url.pathname.startsWith(whitelistEntry);
-          });
-        });
-      }
-
-      if (urlBlacklist !== undefined && urlBlacklist.length > 0) {
-        filteredUrls = filteredUrls.filter((url) => {
-          return !urlBlacklist.some((blacklistEntry) => {
-            return url.pathname.startsWith(blacklistEntry);
-          });
-        });
-      }
-
-      // We use the hostname to filter links that point
-      // to a different domain, even subdomain.
-      const sameHostnameLinks = filteredUrls
-        .filter(
-          (url) =>
-            url.hostname === hostname ||
-            (hostnameIncludesWww
-              ? 'www.' + url.hostname === hostname
-              : url.hostname === 'www.' + hostname)
-        )
-        .map((url) => url.href);
-
-      // Finally, we have to add the URLs to the queue
-      await crawler.addRequests(
-        sameHostnameLinks.filter(
-          (url) =>
-            !blockedNavigationPathEndings.find((ending) => url.endsWith(ending))
-        ),
-        { batchSize: 10 }
-      );
+      await this.filterAndAddLinksToQueue(links);
     };
 
     const myHook = async (
@@ -409,129 +257,65 @@ export default class WebshopCrawler {
 
     const crawlLog = new Log({ prefix: store.name });
 
-    const config = Configuration.getGlobalConfig();
+    // const config = Configuration.getGlobalConfig();
 
-    config.set('persistStorage', 'false');
+    // config.set('persistStorage', 'false');
     // config.set('storageDir', '/dev/shm');
 
-    const crawler = new PlaywrightCrawler(
-      {
-        failedRequestHandler({ request, log }) {
-          log.info(`Request ${request.url} failed too many times.`);
-        },
-        // Default is to reuse requestQueue from all crawl instances
-        requestQueue: requestQueue,
-        statisticsOptions: {
-          //logIntervalSecs: 1800 // 30 minutes
-          logIntervalSecs: 600 // 10 minutes
-        },
-        // useSessionPool: false,
-        // persistCookiesPerSession: false,
-
-        sessionPoolOptions: {
-          persistStateKeyValueStoreId: `${safeStoreName}-keyvalue`,
-          persistStateKey: `${safeStoreName}-session-pool`
-          // persistenceOptions: {
-          //   enable: false
-          // }
-        },
-        maxRequestsPerCrawl: 30000,
-        maxRequestsPerMinute: 30,
-        maxRequestRetries: 3,
-        requestHandlerTimeoutSecs: 240,
-        navigationTimeoutSecs: 120,
-        respectRobotsTxtFile: false,
-        retryOnBlocked: true,
-        requestHandler: requestHandler,
-        /*       statusMessageLoggingInterval: 600,
-      statusMessageCallback: async (ctx) => {
-        return ctx.crawler.setStatusMessage(
-          `Cache size: ${Object.keys(cache).length}`,
-          { level: 'INFO' }
-        ); // log level defaults to 'DEBUG'
-      }, */
-        autoscaledPoolOptions: {
-          loggingIntervalSecs: 600,
-          snapshotterOptions: {
-            clientSnapshotIntervalSecs: 30,
-            eventLoopSnapshotIntervalSecs: 30,
-            maxBlockedMillis: 50
-          }
-          // systemStatusOptions: {
-          //   maxEventLoopOverloadedRatio: 0.7
-          // }
-        },
-        log: crawlLog,
-        headless: true,
-        browserPoolOptions: {
-          maxOpenPagesPerBrowser: 20,
-          retireBrowserAfterPageCount: 1000,
-          retireInactiveBrowserAfterSecs: 10,
-          closeInactiveBrowserAfterSecs: 1000,
-          useFingerprints: false,
-          fingerprintOptions: {
-            useFingerprintCache: false
-          }
-        },
-        launchContext: {
-          userDataDir: '/dev/shm/chrome-user-' + new Date().getTime(),
-          launchOptions: {
-            headless: true,
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              // '--disable-dev-shm-usage',
-              '--disable-accelerated-2d-canvas',
-              '--disable-gpu',
-              '--no-pings',
-              '--no-zygote',
-              '--disable-application-cache',
-              '--disable-offline-load-stale-cache',
-              '--disable-gpu-shader-disk-cache',
-              '--disable-web-security',
-              '--disable-translate',
-              '--disable-session-crashed-bubble',
-              '--no-first-run',
-              // '--single-process',
-              '--noerrdialogs',
-              '--disk-cache-dir=/dev/shm/chrome-cache-' + new Date().getTime(),
-              // Additional RAM-friendly options
-              '--disable-software-rasterizer',
-              '--disable-extensions',
-              '--disable-background-networking',
-              '--disable-sync',
-
-              // Minimize disk I/O
-              '--disable-logging',
-              '--log-level=3'
-            ]
-          }
-        },
-        preNavigationHooks: [myHook]
+    const crawler = new PlaywrightCrawler({
+      ...configuration,
+      failedRequestHandler({ request, log }) {
+        log.info(`Request ${request.url} failed too many times.`);
       },
-      config
-    );
+      requestHandler: requestHandler,
+      headless: true,
+      browserPoolOptions: {
+        maxOpenPagesPerBrowser: 20,
+        retireBrowserAfterPageCount: 1000,
+        retireInactiveBrowserAfterSecs: 10,
+        closeInactiveBrowserAfterSecs: 1000,
+        useFingerprints: false,
+        fingerprintOptions: {
+          useFingerprintCache: false
+        }
+      },
+      launchContext: {
+        userDataDir: '/dev/shm/chrome-user-' + new Date().getTime(),
+        launchOptions: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            // '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--no-pings',
+            '--no-zygote',
+            '--disable-application-cache',
+            '--disable-offline-load-stale-cache',
+            '--disable-gpu-shader-disk-cache',
+            '--disable-web-security',
+            '--disable-translate',
+            '--disable-session-crashed-bubble',
+            '--no-first-run',
+            // '--single-process',
+            '--noerrdialogs',
+            '--disk-cache-dir=/dev/shm/chrome-cache-' + new Date().getTime(),
+            // Additional RAM-friendly options
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-sync',
 
-    // Run the crawler with initial request
-    await crawler.run([startUrl]);
+            // Minimize disk I/O
+            '--disable-logging',
+            '--log-level=3'
+          ]
+        }
+      },
+      preNavigationHooks: [myHook]
+    });
 
-    await requestQueue.drop();
-
-    const storeLogger = createStoreLogger(store.name);
-
-    storeLogger.log('info', `Crawl of store ${store.name} completed.`);
-    storeLogger.log('info', `Total requests: ${totalRequests}`);
-    storeLogger.log('info', `Total processed: ${totalProcessed}`);
-    storeLogger.log('info', `Total errored: ${totalErrored}`);
-    storeLogger.log('info', `Description errors: ${descriptionError}`);
-    storeLogger.log('info', `Attribute errors: ${attributeError}`);
-    storeLogger.log('info', `Image errors: ${imageError}`);
-    storeLogger.log('info', `Brand errors: ${brandError}`);
-    storeLogger.log('info', `Name errors: ${nameError}`);
-    storeLogger.log('info', `InStock errors: ${inStockError}`);
-    storeLogger.log('info', `Categories errors: ${categoriesError}`);
-    storeLogger.close();
-
-    return;
+    return crawler;
   }
 }
