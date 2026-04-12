@@ -57,8 +57,9 @@ async function updateStore(
   const requestQueue = await RequestQueue.open(safeStoreName, {
     storageClient: memoryStorage
   });
+  let crawler;
   if (options.type === 'crawler') {
-    const crawler = new WebshopCrawler(
+    crawler = new WebshopCrawler(
       storeConfig,
       currentDate,
       (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct),
@@ -66,7 +67,7 @@ async function updateStore(
     );
     await crawler.crawlSite();
   } else if (options.type === 'httpcrawler') {
-    const crawler = new WebshopHtmlCrawler(
+    crawler = new WebshopHtmlCrawler(
       storeConfig,
       currentDate,
       (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct),
@@ -83,6 +84,24 @@ async function updateStore(
       currentDate,
       store.id
     ]);
+    const result = crawler.result;
+    await conn.query(
+      'INSERT INTO storeScans (storeId, date, totalRequests, totalProcessed, totalErrored, descriptionError, attributeError, imageError, brandError, nameError, inStockError, categoriesError) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        store.id,
+        currentDate,
+        result.totalRequests,
+        result.totalProcessed,
+        result.totalErrored,
+        result.descriptionError,
+        result.attributeError,
+        result.imageError,
+        result.brandError,
+        result.nameError,
+        result.inStockError,
+        result.categoriesError
+      ]
+    );
     await conn.release();
   });
   return {

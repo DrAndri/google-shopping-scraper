@@ -10,6 +10,25 @@ CREATE TABLE IF NOT EXISTS webstorinator.stores (
     apiEnabled BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+CREATE TABLE IF NOT EXISTS webstorinator.storeScans (
+    storeId TINYINT UNSIGNED NOT NULL,
+    date DATE NOT NULL,
+
+    totalRequests TINYINT UNSIGNED,
+    totalProcessed TINYINT UNSIGNED,
+    totalErrored TINYINT UNSIGNED,
+    descriptionError TINYINT UNSIGNED,
+    attributeError TINYINT UNSIGNED,
+    imageError TINYINT UNSIGNED,
+    brandError TINYINT UNSIGNED,
+    nameError TINYINT UNSIGNED,
+    inStockError TINYINT UNSIGNED,
+    categoriesError TINYINT UNSIGNED,
+
+    PRIMARY KEY (storeId, date),
+    CONSTRAINT fk_storeScans_store FOREIGN KEY (storeId) REFERENCES webstorinator.stores(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS webstorinator.manufacturers (
     id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(127) NOT NULL UNIQUE
