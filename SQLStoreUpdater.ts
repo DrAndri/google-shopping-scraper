@@ -265,6 +265,7 @@ export default class SQLStoreUpdater {
       lastPrice?.price !== newPrice ||
       this.storeConfig.lastScanDate > lastPrice.end
     ) {
+      //If the scraped price is different from the last price or the product was not found during last scan, insert a new price entry
       await conn.query(
         `INSERT INTO ${table} (productId, price, start, end) VALUES (?, ?, ?, ?)`,
         [productId, newPrice, this.currentDate, this.currentDate]

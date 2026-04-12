@@ -50,18 +50,42 @@ export default abstract class BaseCrawler {
     this.crawler = this.setupCrawler(this.getConfiguration(requestQueue));
   }
 
-  async handleProductScrapeResult(scrapeResult: ProductScrapeResult) {
-    if (scrapeResult !== undefined) {
-      if (scrapeResult.errors.description) this.result.descriptionError++;
-      if (scrapeResult.errors.attributes) this.result.attributeError++;
-      if (scrapeResult.errors.image) this.result.imageError++;
-      if (scrapeResult.errors.brand) this.result.brandError++;
-      if (scrapeResult.errors.name) this.result.nameError++;
-      if (scrapeResult.errors.inStock) this.result.inStockError++;
-      if (scrapeResult.errors.categories) this.result.categoriesError++;
-      this.result.totalProcessed++;
-      await this.updateProductInDb(scrapeResult.product);
+  async handleProductScrapeResult(
+    logger: Logger,
+    scrapeResult: ProductScrapeResult
+  ) {
+    const errors = scrapeResult.errors;
+    if (errors.description) {
+      logger.log('warn', 'Error scraping description: %O', errors.description);
+      this.result.descriptionError++;
     }
+    if (errors.attributes) {
+      logger.log('warn', 'Error scraping attributes: %O', errors.attributes);
+      this.result.attributeError++;
+    }
+    if (errors.image) {
+      logger.log('warn', 'Error scraping image: %O', errors.image);
+      this.result.imageError++;
+    }
+    if (errors.brand) {
+      logger.log('warn', 'Error scraping brand: %O', errors.brand);
+      this.result.brandError++;
+    }
+    if (errors.name) {
+      logger.log('warn', 'Error scraping name: %O', errors.name);
+      this.result.nameError++;
+    }
+    if (errors.inStock) {
+      logger.log('warn', 'Error scraping inStock: %O', errors.inStock);
+      this.result.inStockError++;
+    }
+    if (errors.categories) {
+      logger.log('warn', 'Error scraping categories: %O', errors.categories);
+      this.result.categoriesError++;
+    }
+
+    await this.updateProductInDb(scrapeResult.product);
+    this.result.totalProcessed++;
   }
 
   handleProductScrapeError(logger: Logger, e: unknown, url?: string) {

@@ -1,25 +1,19 @@
 import { type InsertManyResult } from 'mongodb';
 import { StoreConfig } from './db-types.js';
 
-export interface GoogleMerchantFeed {
-  rss: {
-    channel: {
-      item: GoogleMerchantProduct[];
-    };
-  };
-}
-
 export interface ProductScrapeResult {
   product: ProductSnapshot;
-  errors: {
-    description: boolean;
-    attributes: boolean;
-    image: boolean;
-    brand: boolean;
-    name: boolean;
-    inStock: boolean;
-    categories: boolean;
-  };
+  errors: ProductScrapeErrors;
+}
+
+export interface ProductScrapeErrors {
+  description: unknown;
+  attributes: unknown;
+  image: unknown;
+  brand: unknown;
+  name: unknown;
+  inStock: unknown;
+  categories: unknown;
 }
 
 export interface ScrapeResult {
@@ -58,15 +52,6 @@ export interface ProductAttributeGroup {
 export interface ProductAttribute {
   name: string;
   value: string | number | boolean;
-}
-
-export interface GoogleMerchantProduct {
-  'g:id': string;
-  'g:price': number;
-  'g:title': string;
-  'g:brand'?: string;
-  'g:gtin'?: string;
-  'g:sale_price'?: number;
 }
 
 export interface StoreUpdateResult {

@@ -1,32 +1,16 @@
 import {
-  AttributeSelectors,
-  ProductSanitizers,
-  ProductSelectors
-} from '../types/db-types.js';
-import {
   ProductAttribute,
   ProductAttributeGroup,
+  ProductScrapeErrors,
+  ProductScrapeResult,
   ProductSnapshot
 } from '../types/types.js';
 import { Logger } from 'winston';
 import sanitizeHtml from 'sanitize-html';
-import { expect } from 'playwright/test';
 import { CheerioAPI } from 'crawlee';
+import BaseScraper from './BaseScraper.js';
 
-export default class PageHtmlScraper {
-  selectors: ProductSelectors;
-  sanitizers: ProductSanitizers | undefined;
-  categoryBanList: string[];
-  constructor(
-    selectors: ProductSelectors,
-    sanitizers: ProductSanitizers | undefined,
-    categoryBanList: string[]
-  ) {
-    this.selectors = selectors;
-    this.sanitizers = sanitizers;
-    this.categoryBanList = categoryBanList;
-  }
-
+export default class PageHtmlScraper extends BaseScraper {
   scrapePrices($: CheerioAPI): {
     listPrice: number;
     salePrice: number | undefined;
@@ -35,11 +19,9 @@ export default class PageHtmlScraper {
       ? this.evalPrice(this.selectors.oldPrice, $)
       : undefined;
     const price = this.evalPrice(this.selectors.listPrice, $);
-    expect(price).toBeTruthy();
     const listPrice = oldPrice && oldPrice > 0 ? oldPrice : price;
     const salePrice = price;
 
-    //TODO: Remove if expect is working
     if (!listPrice) throw new Error('Price not found');
 
     return { listPrice, salePrice };
@@ -72,20 +54,19 @@ export default class PageHtmlScraper {
             categoriesArray.push(category);
         }
       );
+      if (categoriesArray.length == 0)
+        throw new Error('No valid categories found');
       return categoriesArray;
     } else if (categorySplitter) {
       const categoriesString = $(categories).text();
-      if (!categoriesString) return [];
+      if (!categoriesString) throw new Error('No valid categories found');
       if (categorySplitter) return categoriesString.split(categorySplitter);
       return [categoriesString];
     } else return undefined;
   }
 
-  scrapeAttributes(
-    $: CheerioAPI,
-    selectors: AttributeSelectors | undefined,
-    logger: Logger
-  ) {
+  scrapeAttributes($: CheerioAPI, logger: Logger) {
+    const selectors = this.selectors.attributes;
     const attributeGroups: ProductAttributeGroup[] = [];
     try {
       if (
@@ -208,6 +189,9 @@ export default class PageHtmlScraper {
   }
 
   hasText($: CheerioAPI, selector: string, text: string) {
+    const node = $(this.getSelector(selector));
+    if (node.length == 0)
+      throw new Error(`Selector ${selector} not found for inStock evaluation`);
     return $(this.getSelector(selector)).filter(
       // eslint-disable-next-line @typescript-eslint/prefer-includes
       (i, element) => $(element).text().indexOf(text) > -1
@@ -245,8 +229,14 @@ export default class PageHtmlScraper {
     return sanitizeHtml(html);
   }
 
-  scrapeProductPage($: CheerioAPI, url: string, logger: Logger) {
-    const errors = {
+  scrapeProductPage(
+    $: CheerioAPI,
+    url: string,
+    logger: Logger
+  ): ProductScrapeResult {
+    const sku = this.evalSku($, url);
+    const { listPrice, salePrice } = this.scrapePrices($);
+    const errors: ProductScrapeErrors = {
       description: false,
       attributes: false,
       image: false,
@@ -255,25 +245,42 @@ export default class PageHtmlScraper {
       inStock: false,
       categories: false
     };
-
-    const sku = this.evalSku($, url);
-    const { listPrice, salePrice } = this.scrapePrices($);
-
-    const inStock = this.scrapeInStock($);
-    if (inStock === undefined) errors.inStock = true;
-    const image = this.scrapeImage($);
-    if (image === undefined) errors.image = true;
-    const attributeGroups: ProductAttributeGroup[] | undefined =
-      this.scrapeAttributes($, this.selectors.attributes, logger);
-    if (attributeGroups === undefined) errors.attributes = true;
-    const name = this.evalText(this.selectors.name, $);
-    if (name === undefined) errors.name = true;
-    const brand = this.scrapeBrand($);
-    if (brand === undefined) errors.brand = true;
-    const description = this.scrapeDescription($);
-    if (description === undefined) errors.description = true;
-    const categories = this.scrapeCategories($, name);
-    if (categories === undefined) errors.categories = true;
+    let inStock, image, name, brand, description, attributeGroups, categories;
+    try {
+      inStock = this.scrapeInStock($);
+    } catch (e) {
+      errors.inStock = e;
+    }
+    try {
+      image = this.scrapeImage($);
+    } catch (e) {
+      errors.image = e;
+    }
+    try {
+      attributeGroups = this.scrapeAttributes($, logger);
+    } catch (e) {
+      errors.attributes = e;
+    }
+    try {
+      name = this.evalText(this.selectors.name, $);
+    } catch (e) {
+      errors.name = e;
+    }
+    try {
+      brand = this.scrapeBrand($);
+    } catch (e) {
+      errors.brand = e;
+    }
+    try {
+      description = this.scrapeDescription($);
+    } catch (e) {
+      errors.description = e;
+    }
+    try {
+      categories = this.scrapeCategories($, name);
+    } catch (e) {
+      errors.categories = e;
+    }
     const product: ProductSnapshot = {
       sku: sku,
       price: listPrice,

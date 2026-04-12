@@ -1,32 +1,17 @@
 import { Locator } from 'playwright';
-import {
-  AttributeSelectors,
-  ProductSanitizers,
-  ProductSelectors
-} from '../types/db-types.js';
+import { AttributeSelectors } from '../types/db-types.js';
 import {
   ProductAttribute,
   ProductAttributeGroup,
+  ProductScrapeErrors,
   ProductSnapshot
 } from '../types/types.js';
 import { Logger } from 'winston';
 import sanitizeHtml from 'sanitize-html';
 import { expect } from 'playwright/test';
+import BaseScraper from './BaseScraper.js';
 
-export default class PageScraper {
-  selectors: ProductSelectors;
-  sanitizers: ProductSanitizers | undefined;
-  categoryBanList: string[];
-  constructor(
-    selectors: ProductSelectors,
-    sanitizers: ProductSanitizers | undefined,
-    categoryBanList: string[]
-  ) {
-    this.selectors = selectors;
-    this.sanitizers = sanitizers;
-    this.categoryBanList = categoryBanList;
-  }
-
+export default class PageScraper extends BaseScraper {
   async scrapePrices(productLocator: Locator): Promise<{
     listPrice: number;
     salePrice: number | undefined;
@@ -225,7 +210,7 @@ export default class PageScraper {
   }
 
   async scrapeProductPage(productLocator: Locator, logger: Logger) {
-    const errors = {
+    const errors: ProductScrapeErrors = {
       description: false,
       attributes: false,
       image: false,
@@ -251,13 +236,11 @@ export default class PageScraper {
     const { listPrice, salePrice } = await this.scrapePrices(productLocator);
 
     const inStock = await this.scrapeInStock(productLocator).catch((e) => {
-      logger.log('warn', 'Error scraping inStock: %O', e);
-      errors.inStock = true;
+      errors.inStock = e;
       return undefined;
     });
     const image = await this.scrapeImage(productLocator).catch((e) => {
-      logger.log('warn', 'Error scraping image: %O', e);
-      errors.image = true;
+      errors.image = e;
       return undefined;
     });
     const attributeGroups = await this.scrapeAttributes(
@@ -265,35 +248,30 @@ export default class PageScraper {
       this.selectors.attributes,
       logger
     ).catch((e) => {
-      logger.log('warn', 'Error scraping attributes: %O', e);
-      errors.attributes = true;
+      errors.attributes = e;
       return undefined;
     });
 
     const name = await this.evalText(this.selectors.name, productLocator).catch(
       (e) => {
-        logger.log('warn', 'Error scraping name: %O', e);
-        errors.name = true;
+        errors.name = e;
         return undefined;
       }
     );
     const brand = await this.scrapeBrand(productLocator).catch((e) => {
-      logger.log('warn', 'Error scraping brand: %O', e);
-      errors.brand = true;
+      errors.brand = e;
       return undefined;
     });
 
     const description = await this.scrapeDescription(productLocator).catch(
       (e) => {
-        logger.log('warn', 'Error scraping description: %O', e);
-        errors.description = true;
+        errors.description = e;
         return undefined;
       }
     );
     const categories = await this.scrapeCategories(productLocator, name).catch(
       (e) => {
-        logger.log('warn', 'Error scraping categories: %O', e);
-        errors.categories = true;
+        errors.categories = e;
         return undefined;
       }
     );

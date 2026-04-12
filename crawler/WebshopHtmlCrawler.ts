@@ -60,7 +60,7 @@ export default class WebshopHtmlCrawler extends BaseCrawler {
             logger
           );
 
-          await this.handleProductScrapeResult(scrapeResult);
+          await this.handleProductScrapeResult(logger, scrapeResult);
         } catch (e) {
           this.handleProductScrapeError(logger, e, request.loadedUrl);
         }
