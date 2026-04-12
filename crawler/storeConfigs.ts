@@ -397,9 +397,9 @@ export const configs: WebshopCrawlerOptions[] = [
     selectors: {
       productPage: '#main-content',
       oldPrice: '',
-      listPrice: 'p:has-text("Verð:")',
+      listPrice: 'p:contains("Verð:")',
       name: 'div > div > p.font-serif',
-      sku: 'p:has-text("Vörunúmer:")',
+      sku: 'p:contains("Vörunúmer:")',
       image: '.w-full img',
       description: '#accordion__panel-0',
       categories: 'div:nth-child(1)',
@@ -435,7 +435,7 @@ export const configs: WebshopCrawlerOptions[] = [
       inStock: '.stock',
       inStockText: 'Á lager',
       categoryItemLocator: 'a',
-      brand: 'span.tagged_as:has-text("Vörumerki:") > a:nth-child(1)'
+      brand: 'span.tagged_as:contains("Vörumerki:") > a:nth-child(1)'
     }
   },
   {
@@ -504,7 +504,7 @@ export const configs: WebshopCrawlerOptions[] = [
       listPrice:
         ' .price-wrapper > .price-final_price > .price-block__price > .amount-default > .price-wrapper',
       name: 'h1.page-title > span',
-      sku: 'tr:has-text("Strikamerki") > td',
+      sku: 'tr:contains("Strikamerki") > td',
       image: '#interactive-0',
       description: 'div.description',
       categories: '.breadcrumbs',
@@ -529,11 +529,11 @@ export const configs: WebshopCrawlerOptions[] = [
     selectors: {
       productPage: '#wrapper',
       oldPrice:
-        'div:nth-child(2) div:nth-child(2) div:has-text("VERÐ ÁÐUR") > div:nth-child(1) > div:nth-child(2) > span',
+        'div:nth-child(2) div:nth-child(2) div:contains("VERÐ ÁÐUR") > div:nth-child(1) > div:nth-child(2) > span',
       listPrice:
-        'div:nth-child(2) div:nth-child(2) div:has-text("VERÐ") > div:nth-child(1) > div:nth-child(1) > span',
+        'div:nth-child(2) div:nth-child(2) div:contains("VERÐ") > div:nth-child(1) > div:nth-child(1) > span',
       name: 'h2',
-      sku: 'p:has-text("VNR.")',
+      sku: 'p:contains("VNR.")',
       image: 'div > div:nth-child(1) > img',
       description:
         'div.visible > div:nth-child(1) > div:nth-child(2) > div:nth-child(2) > div:nth-child(3)',
