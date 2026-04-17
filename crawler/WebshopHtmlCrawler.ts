@@ -45,12 +45,6 @@ export default class WebshopHtmlCrawler extends BaseCrawler {
           html.indexOf(productPageIdentifier) > -1
         : false;
       if (productLocator.length > 0 && identifierInHtml) {
-        logger.log(
-          'debug',
-          'selector: %s, identifier: %s',
-          productLocator.length > 0,
-          identifierInHtml
-        );
         //TODO: check if productLocator matches multiple elements
         logger.log('debug', 'processing url: %s', request.loadedUrl);
         try {
@@ -78,7 +72,6 @@ export default class WebshopHtmlCrawler extends BaseCrawler {
         const href = $(elem).attr('href');
         if (href) links.push(href);
       });
-      //.then((links) => links.filter((link) => link !== null));
 
       await this.filterAndAddLinksToQueue(links);
     };

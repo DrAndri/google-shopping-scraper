@@ -111,14 +111,6 @@ export interface WebshopCrawlerOptions {
   menuClicker?: string;
 }
 
-export interface WebScraperOptions {
-  catalogSearchUrl: string;
-  productItemClasses: ProductItemClasses;
-  pageParameter: string;
-  totalProductsClass: string;
-  sanitizers?: ProductSanitizers;
-}
-
 export interface ProductSanitizers {
   sku: ProductSanitizer[];
 }

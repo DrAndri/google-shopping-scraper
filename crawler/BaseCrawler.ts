@@ -25,6 +25,8 @@ export default abstract class BaseCrawler {
   updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>;
   result: ScrapeResult;
   crawler: CheerioCrawler | PlaywrightCrawler;
+  hostname: string;
+  hostnameIncludesWww: boolean;
 
   constructor(
     store: StoreConfig,
@@ -48,6 +50,8 @@ export default abstract class BaseCrawler {
       categoriesError: 0
     };
     this.crawler = this.setupCrawler(this.getConfiguration(requestQueue));
+    this.hostname = new URL(this.store.options.startUrl).hostname;
+    this.hostnameIncludesWww = this.hostname.startsWith('www.');
   }
 
   async handleProductScrapeResult(
@@ -94,56 +98,57 @@ export default abstract class BaseCrawler {
     this.result.totalErrored++;
   }
 
+  isUrlLocal(url: URL): boolean {
+    // We use the hostname to filter links that point
+    // to a different domain, even subdomain.
+    return (
+      url.hostname === this.hostname ||
+      (this.hostnameIncludesWww
+        ? 'www.' + url.hostname === this.hostname
+        : url.hostname === 'www.' + this.hostname)
+    );
+  }
+
+  anyMatchInUrl(checkList: string[], url: URL): boolean {
+    return checkList.some((entry) => {
+      return url.pathname.startsWith(entry);
+    });
+  }
+
   async filterAndAddLinksToQueue(links: string[]) {
     const startUrl = this.store.options.startUrl;
     const urlWhitelist = this.store.options.urlWhitelist;
     const urlBlacklist = this.store.options.urlBlacklist;
-    const { hostname } = new URL(startUrl);
-    const hostnameIncludesWww = hostname.startsWith('www.');
+
     const absoluteUrls = links.map((link) => {
       if (absoluteUrlRegExp.test(link)) return URL.parse(link);
       else return new URL(link, startUrl);
     });
 
+    let filteredUrls = absoluteUrls
+      .filter((url) => url !== null)
+      .filter((url) => this.isUrlLocal(url))
+      .filter(
+        (url) =>
+          !blockedNavigationPathEndings.find((ending) =>
+            url.href.endsWith(ending)
+          )
+      );
     // Filter out urls that do not match whitelist or match blacklist
-    //TODO: remove or implement per site filter lists
-    let filteredUrls = absoluteUrls.filter((url) => url !== null);
     if (urlWhitelist !== undefined && urlWhitelist.length > 0) {
-      filteredUrls = filteredUrls.filter((url) => {
-        return urlWhitelist.some((whitelistEntry) => {
-          return url.pathname.startsWith(whitelistEntry);
-        });
-      });
+      filteredUrls = filteredUrls.filter((url) =>
+        this.anyMatchInUrl(urlWhitelist, url)
+      );
     }
 
     if (urlBlacklist !== undefined && urlBlacklist.length > 0) {
-      filteredUrls = filteredUrls.filter((url) => {
-        return !urlBlacklist.some((blacklistEntry) => {
-          return url.pathname.startsWith(blacklistEntry);
-        });
-      });
+      filteredUrls = filteredUrls.filter(
+        (url) => !this.anyMatchInUrl(urlBlacklist, url)
+      );
     }
 
-    // We use the hostname to filter links that point
-    // to a different domain, even subdomain.
-    const sameHostnameLinks = filteredUrls
-      .filter(
-        (url) =>
-          url.hostname === hostname ||
-          (hostnameIncludesWww
-            ? 'www.' + url.hostname === hostname
-            : url.hostname === 'www.' + hostname)
-      )
-      .map((url) => url.href);
-
     // Finally, we have to add the URLs to the queue
-    await this.crawler?.addRequests(
-      sameHostnameLinks.filter(
-        (url) =>
-          !blockedNavigationPathEndings.find((ending) => url.endsWith(ending))
-      ),
-      { batchSize: 10 }
-    );
+    await this.crawler?.addRequests(filteredUrls.map((url) => url.href));
   }
 
   getConfiguration(
@@ -157,7 +162,6 @@ export default abstract class BaseCrawler {
     // config.set('storageDir', '/dev/shm');
 
     const configuration: CheerioCrawlerOptions | PlaywrightCrawlerOptions = {
-      // Default is to reuse requestQueue from all crawl instances
       requestQueue: requestQueue,
       statisticsOptions: {
         logIntervalSecs: 600 // 10 minutes
