@@ -192,7 +192,7 @@ export default class PageScraper extends BaseScraper {
 
   async scrapeImage(productLocator: Locator) {
     if (!this.selectors.image) return undefined;
-    const locator = productLocator.locator(this.selectors.image);
+    const locator = productLocator.locator(this.selectors.image).first();
     const src = await locator.getAttribute('src');
     return src ?? undefined;
   }

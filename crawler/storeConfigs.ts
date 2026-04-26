@@ -349,7 +349,7 @@ export const configs: WebshopCrawlerOptions[] = [
   {
     storeId: 11,
     startUrl: 'https://kronan.is',
-    type: 'httpcrawler',
+    type: 'crawler',
     productPageIdentifier: 'Innihald:</p>',
     urlWhitelist: ['/vara', '/voruurval'],
     selectors: {
@@ -421,7 +421,7 @@ export const configs: WebshopCrawlerOptions[] = [
     storeId: 13,
     startUrl: 'https://nexus.is',
     type: 'httpcrawler',
-    productPageIdentifier: 'Vörunúmer',
+    productPageIdentifier: 'product-gallery',
     urlWhitelist: ['/voruflokkur', '/vara'],
     selectors: {
       productPage: '.product-container',
@@ -470,7 +470,7 @@ export const configs: WebshopCrawlerOptions[] = [
   {
     storeId: 15,
     startUrl: 'https://www.bauhaus.is',
-    type: 'httpcrawler',
+    type: 'crawler',
     productPageIdentifier: 'Vörulýsing',
     urlBlacklist: [
       '/afgreidslutimar',
@@ -522,7 +522,7 @@ export const configs: WebshopCrawlerOptions[] = [
   {
     storeId: 16,
     startUrl: 'https://byko.is',
-    type: 'httpcrawler',
+    type: 'crawler',
     productPageIdentifier: 'id="product-ean-numbers"',
     urlWhitelist: ['/vara', '/voruflokkar'],
     menuClicker: '.menuButton',
@@ -556,7 +556,7 @@ export const configs: WebshopCrawlerOptions[] = [
     storeId: 17,
     startUrl: 'https://vefverslun.siminn.is',
     type: 'httpcrawler',
-    productPageIdentifier: 'Setja í körfu',
+    productPageIdentifier: 'productsimple',
     urlBlacklist: [
       '/en',
       '/is/filterSearch',
@@ -622,7 +622,7 @@ export const configs: WebshopCrawlerOptions[] = [
     storeId: 19,
     startUrl: 'https://hverslun.is',
     type: 'httpcrawler',
-    productPageIdentifier: 'Sjá fleiri vörur',
+    productPageIdentifier: 'storeProductForm',
     urlBlacklist: [
       '/is/nyskraning-i-h-klubbinn',
       '/is/moya',
@@ -691,7 +691,7 @@ export const configs: WebshopCrawlerOptions[] = [
     startUrl: 'https://www.vinbudin.is',
     type: 'httpcrawler',
     productPageIdentifier: 'Varan fæst í eftirfarandi Vínbúðum',
-    urlWhitelist: ['/heim/vorur'],
+    urlWhitelist: ['/heim/vorur', '/desktopdefault.aspx/tabid-54'],
     selectors: {
       productPage: '#wrapper > .content',
       listPrice: '.price > .money',

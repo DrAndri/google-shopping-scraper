@@ -428,35 +428,50 @@ export default class SQLStoreUpdater {
         existingAttributeGroupId = res.insertId;
       }
       for (const attribute of attributeGroup.attributes) {
-        let existingAttributeId = await conn
-          .query<
-            IdLookup[]
-          >('SELECT id FROM attributes WHERE name = ? AND groupId = ? LIMIT 1', [attribute.name, existingAttributeGroupId])
-          .then((res) => this.getFirstDbId(res));
-        if (!existingAttributeId) {
-          const res = await conn.query<UpsertResult>(
-            'INSERT INTO attributes (name, groupId) VALUES (?, ?)',
-            [attribute.name, existingAttributeGroupId]
+        try {
+          let existingAttributeId = await conn
+            .query<
+              IdLookup[]
+            >('SELECT id FROM attributes WHERE name = ? AND groupId = ? LIMIT 1', [attribute.name, existingAttributeGroupId])
+            .then((res) => this.getFirstDbId(res));
+          if (!existingAttributeId) {
+            const res = await conn.query<UpsertResult>(
+              'INSERT INTO attributes (name, groupId) VALUES (?, ?)',
+              [attribute.name, existingAttributeGroupId]
+            );
+            existingAttributeId = res.insertId;
+          }
+          const existingAttributeToProductEntry =
+            existingAttributeToProduct.find(
+              (a) => a.attributeId === existingAttributeId
+            );
+          if (!existingAttributeToProductEntry) {
+            await conn.query(
+              'INSERT INTO attributeToProducts (attributeId, productId, value) VALUES (?, ?, ?)',
+              [existingAttributeId, product.id, attribute.value]
+            );
+            attributesChanged = true;
+          } else if (
+            existingAttributeToProductEntry.value !== attribute.value
+          ) {
+            await conn.query(
+              'UPDATE attributeToProducts SET value = ? WHERE attributeId = ? AND productId = ?',
+              [attribute.value, existingAttributeId, product.id]
+            );
+            attributesChanged = true;
+          }
+        } catch (e) {
+          //TODO: ignore failed insert
+          console.error(
+            'Error upserting attributes for product',
+            product.id,
+            attributeGroup.name,
+            attribute.name
           );
-          existingAttributeId = res.insertId;
-        }
-        const existingAttributeToProductEntry = existingAttributeToProduct.find(
-          (a) => a.attributeId === existingAttributeId
-        );
-        if (!existingAttributeToProductEntry) {
-          await conn.query(
-            'INSERT INTO attributeToProducts (attributeId, productId, value) VALUES (?, ?, ?)',
-            [existingAttributeId, product.id, attribute.value]
-          );
-          attributesChanged = true;
-        } else if (existingAttributeToProductEntry.value !== attribute.value) {
-          await conn.query(
-            'UPDATE attributeToProducts SET value = ? WHERE attributeId = ? AND productId = ?',
-            [attribute.value, existingAttributeId, product.id]
-          );
-          attributesChanged = true;
+          console.error(e);
         }
       }
+      //TODO: delete attributeToProduct entries that are not present in scraped data anymore
     }
     return attributesChanged;
   }
