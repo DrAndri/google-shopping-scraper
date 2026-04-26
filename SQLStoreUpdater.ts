@@ -461,12 +461,12 @@ export default class SQLStoreUpdater {
             attributesChanged = true;
           }
         } catch (e) {
-          //TODO: ignore failed insert
           console.error(
             'Error upserting attributes for product',
             product.id,
             attributeGroup.name,
-            attribute.name
+            attribute.name,
+            attribute.value
           );
           console.error(e);
         }
