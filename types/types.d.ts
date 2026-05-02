@@ -1,6 +1,3 @@
-import { type InsertManyResult } from 'mongodb';
-import { StoreConfig } from './db-types.js';
-
 export interface ProductScrapeResult {
   product: ProductSnapshot;
   errors: ProductScrapeErrors;
@@ -55,10 +52,29 @@ export interface ProductAttribute {
 }
 
 export interface StoreUpdateResult {
-  productMetadataUpsert: UpsertManyResult | undefined;
-  newPrices: InsertManyResult | undefined;
-  priceUpdate: UpsertManyResult | undefined;
-  store: StoreConfig;
+  newProducts: number;
+  updatedProducts: number;
+  newPrices: number;
+  updatedPrices: number;
+  newSalePrices: number;
+  updatedSalePrices: number;
+  newAttributes: number;
+  newAttributeGroups: number;
+  newAttributesToProducts: number;
+  updatedAttributesToProducts: number;
+  deletedAttributesToProducts: number;
+  newCategories: number;
+  updatedCategories: number;
+  newManufacturers: number;
+  updatedManufacturers: number;
+
+  nameUpdates: number;
+  descriptionUpdates: number;
+  imageUpdates: number;
+  inStockUpdates: number;
+  gtinUpdates: number;
+  urlUpdates: number;
+  
 }
 
 export interface UpsertManyResult {

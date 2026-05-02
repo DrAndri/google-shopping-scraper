@@ -104,30 +104,39 @@ async function updateStore(
     );
     await conn.release();
   });
-  return {
-    store: storeConfig,
-    productMetadataUpsert: undefined,
-    priceUpdate: undefined,
-    newPrices: undefined
-  };
+  return storeUpdater.result;
 }
 
 function reportResults(results: StoreUpdateResult): void {
   console.log('FINISHED UPDATING', results.store.name);
-  console.log(results.priceUpdate?.modifiedCount ?? 0, ' prices modified');
-  console.log(results.newPrices?.insertedCount ?? 0, ' prices inserted');
+  console.log('New products:', results.newProducts);
+  console.log('Updated products:', results.updatedProducts);
+  console.log('New prices:', results.newPrices);
+  console.log('Updated prices:', results.updatedPrices);
+  console.log('New sale prices:', results.newSalePrices);
+  console.log('Updated sale prices:', results.updatedSalePrices);
+  console.log('New attributes:', results.newAttributes);
+  // console.log('Updated attributes:', results.updatedAttributes);
+  console.log('New categories:', results.newCategories);
+  console.log('Updated categories:', results.updatedCategories);
+  console.log('New manufacturers:', results.newManufacturers);
+  console.log('Updated manufacturers:', results.updatedManufacturers);
+  console.log('New attribute groups:', results.newAttributeGroups);
+  console.log('New attributes to products:', results.newAttributesToProducts);
   console.log(
-    results.productMetadataUpsert?.matchedCount ?? 0,
-    ' productMetadata matched'
+    'Updated attributes to products:',
+    results.updatedAttributesToProducts
   );
   console.log(
-    results.productMetadataUpsert?.upsertedCount ?? 0,
-    ' productMetadata upserted'
+    'Deleted attributes to products:',
+    results.deletedAttributesToProducts
   );
-  console.log(
-    results.productMetadataUpsert?.modifiedCount ?? 0,
-    ' productMetadata modified'
-  );
+  console.log('Name updates:', results.nameUpdates);
+  console.log('Description updates:', results.descriptionUpdates);
+  console.log('Image updates:', results.imageUpdates);
+  console.log('In-stock updates:', results.inStockUpdates);
+  console.log('GTIN updates:', results.gtinUpdates);
+  console.log('URL updates:', results.urlUpdates);
 }
 
 async function getAllStores(): Promise<Store[]> {

@@ -14,7 +14,11 @@ import {
   DbId,
   IdLookup
 } from './types/db-types.js';
-import { ProductSnapshot, ProductAttributeGroup } from './types/types.js';
+import {
+  ProductSnapshot,
+  ProductAttributeGroup,
+  StoreUpdateResult
+} from './types/types.js';
 
 export const poolConfig: PoolConfig = {
   host: process.env.MARIADB_HOST,
@@ -34,6 +38,7 @@ export default class SQLStoreUpdater {
   attributesPool: Pool;
   categoriesPool: Pool;
   manufacturersPool: Pool;
+  result: StoreUpdateResult;
 
   constructor(
     storeConfig: StoreConfig,
@@ -50,6 +55,29 @@ export default class SQLStoreUpdater {
     this.attributesPool = attributesPool;
     this.categoriesPool = categoriesPool;
     this.manufacturersPool = manufacturersPool;
+    this.result = {
+      newProducts: 0,
+      updatedProducts: 0,
+      newPrices: 0,
+      updatedPrices: 0,
+      newSalePrices: 0,
+      updatedSalePrices: 0,
+      newAttributes: 0,
+      newCategories: 0,
+      updatedCategories: 0,
+      newManufacturers: 0,
+      updatedManufacturers: 0,
+      newAttributeGroups: 0,
+      newAttributesToProducts: 0,
+      updatedAttributesToProducts: 0,
+      deletedAttributesToProducts: 0,
+      nameUpdates: 0,
+      descriptionUpdates: 0,
+      imageUpdates: 0,
+      inStockUpdates: 0,
+      gtinUpdates: 0,
+      urlUpdates: 0
+    };
   }
 
   async queryPool<T>(
@@ -92,29 +120,34 @@ export default class SQLStoreUpdater {
     );
 
     const promises = [];
-
     promises.push(
-      this.queryPool(this.pricePool, async (priceConn) =>
-        this.upsertPrice(
+      this.queryPool(this.pricePool, async (priceConn) => {
+        const priceResult = await this.upsertPrice(
           priceConn,
           existingProduct.id,
           scrapedProduct.price,
           'prices'
-        )
-      )
+        );
+        if (priceResult === 'newPrice') this.result.newPrices++;
+        else if (priceResult === 'updatedPrice') this.result.updatedPrices++;
+        return priceResult;
+      })
     );
-
     if (scrapedProduct.salePrice !== undefined) {
       const salePrice = scrapedProduct.salePrice;
       promises.push(
-        this.queryPool(this.salePricePool, async (salePriceConn) =>
-          this.upsertPrice(
-            salePriceConn,
+        this.queryPool(this.salePricePool, async (priceConn) => {
+          const salePriceResult = await this.upsertPrice(
+            priceConn,
             existingProduct.id,
             salePrice,
             'salePrices'
-          )
-        )
+          );
+          if (salePriceResult === 'newPrice') this.result.newSalePrices++;
+          else if (salePriceResult === 'updatedPrice')
+            this.result.updatedSalePrices++;
+          return salePriceResult;
+        })
       );
     }
 
@@ -133,6 +166,10 @@ export default class SQLStoreUpdater {
             [existingProduct.id]
           );
           categoryChanged = true;
+        }
+        if (categoryChanged) {
+          if (existingProduct.categoryId) this.result.updatedCategories++;
+          else this.result.newCategories++;
         }
         return categoryChanged;
       })
@@ -153,6 +190,11 @@ export default class SQLStoreUpdater {
             [existingProduct.id]
           );
           manufacturerChanged = true;
+        }
+        if (manufacturerChanged) {
+          if (existingProduct.manufacturerId)
+            this.result.updatedManufacturers++;
+          else this.result.newManufacturers++;
         }
         return manufacturerChanged;
       })
@@ -177,6 +219,120 @@ export default class SQLStoreUpdater {
     }
   }
 
+  async insertProduct(
+    productsConn: PoolConnection,
+    scrapedProduct: ProductSnapshot
+  ): Promise<Product> {
+    const res = await productsConn.query<UpsertResult>(
+      'INSERT INTO products (storeId, sku, name, image, ean, description, url, inStock, firstSeenDate, lastChangeDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        this.storeConfig.id,
+        scrapedProduct.sku,
+        scrapedProduct.title,
+        scrapedProduct.image,
+        scrapedProduct.gtin,
+        scrapedProduct.description,
+        scrapedProduct.url,
+        scrapedProduct.inStock,
+        this.currentDate,
+        this.currentDate
+      ]
+    );
+    this.result.newProducts++;
+    return {
+      id: res.insertId,
+      storeId: this.storeConfig.id,
+      sku: scrapedProduct.sku,
+      name: scrapedProduct.title,
+      image: scrapedProduct.image,
+      ean: scrapedProduct.gtin,
+      description: scrapedProduct.description,
+      url: scrapedProduct.url,
+      inStock: scrapedProduct.inStock,
+      firstSeenDate: this.currentDate,
+      lastChangeDate: this.currentDate
+    };
+  }
+
+  async updateProduct(
+    productsConn: PoolConnection,
+    existingProduct: Product,
+    scrapedProduct: ProductSnapshot
+  ): Promise<Product> {
+    const colsToUpdate = [];
+    if (scrapedProduct.title !== existingProduct.name) {
+      colsToUpdate.push({ name: 'name', value: scrapedProduct.title });
+      this.result.nameUpdates++;
+    }
+    if (scrapedProduct.image !== existingProduct.image) {
+      colsToUpdate.push({ name: 'image', value: scrapedProduct.image });
+      this.result.imageUpdates++;
+    }
+    if (scrapedProduct.gtin !== existingProduct.ean) {
+      colsToUpdate.push({ name: 'ean', value: scrapedProduct.gtin });
+      this.result.gtinUpdates++;
+    }
+    if (scrapedProduct.description !== existingProduct.description) {
+      colsToUpdate.push({
+        name: 'description',
+        value: scrapedProduct.description
+      });
+      this.result.descriptionUpdates++;
+    }
+    if (scrapedProduct.url !== existingProduct.url) {
+      colsToUpdate.push({ name: 'url', value: scrapedProduct.url });
+      this.result.urlUpdates++;
+    }
+    if (scrapedProduct.inStock !== existingProduct.inStock) {
+      colsToUpdate.push({ name: 'inStock', value: scrapedProduct.inStock });
+      this.result.inStockUpdates++;
+    }
+    if (colsToUpdate.length === 0) return existingProduct;
+    await productsConn.query(
+      'UPDATE products SET ' +
+        colsToUpdate.map((c) => `${c.name} = ?`).join(', ') +
+        ', lastChangeDate = ? WHERE id = ?',
+      [
+        ...colsToUpdate.map((c) => c.value),
+        this.currentDate,
+        existingProduct.id
+      ]
+    );
+    this.result.updatedProducts++;
+
+    // if (
+    //   scrapedProduct.title !== existingProduct.name ||
+    //   scrapedProduct.image !== existingProduct.image ||
+    //   scrapedProduct.gtin !== existingProduct.ean ||
+    //   scrapedProduct.description !== existingProduct.description ||
+    //   scrapedProduct.url !== existingProduct.url ||
+    //   scrapedProduct.inStock !== existingProduct.inStock
+    // ) {
+    //   //TODO: optimise by only updating changed fields
+    //   await productsConn.query(
+    //     'UPDATE products SET name = ?, image = ?, ean = ?, description = ?, url = ?, inStock = ?, lastChangeDate = ? WHERE id = ?',
+    //     [
+    //       scrapedProduct.title,
+    //       scrapedProduct.image,
+    //       scrapedProduct.gtin,
+    //       scrapedProduct.description,
+    //       scrapedProduct.url,
+    //       scrapedProduct.inStock,
+    //       this.currentDate,
+    //       existingProduct.id
+    //     ]
+    //   );
+    existingProduct.name = scrapedProduct.title;
+    existingProduct.image = scrapedProduct.image;
+    existingProduct.ean = scrapedProduct.gtin;
+    existingProduct.description = scrapedProduct.description;
+    existingProduct.url = scrapedProduct.url;
+    existingProduct.inStock = scrapedProduct.inStock;
+    existingProduct.lastChangeDate = this.currentDate;
+    // }
+    return existingProduct;
+  }
+
   async upsertProduct(
     productsConn: PoolConnection,
     scrapedProduct: ProductSnapshot
@@ -187,66 +343,13 @@ export default class SQLStoreUpdater {
       >('SELECT * FROM products WHERE sku = ? AND storeId = ? LIMIT 1', [scrapedProduct.sku, this.storeConfig.id])
       .then((res) => this.getFirstResult(res));
     if (existingProduct) {
-      if (
-        scrapedProduct.title !== existingProduct.name ||
-        scrapedProduct.image !== existingProduct.image ||
-        scrapedProduct.gtin !== existingProduct.ean ||
-        scrapedProduct.description !== existingProduct.description ||
-        scrapedProduct.url !== existingProduct.url ||
-        scrapedProduct.inStock !== existingProduct.inStock
-      ) {
-        //TODO: optimise by only updating changed fields
-        await productsConn.query(
-          'UPDATE products SET name = ?, image = ?, ean = ?, description = ?, url = ?, inStock = ?, lastChangeDate = ? WHERE id = ?',
-          [
-            scrapedProduct.title,
-            scrapedProduct.image,
-            scrapedProduct.gtin,
-            scrapedProduct.description,
-            scrapedProduct.url,
-            scrapedProduct.inStock,
-            this.currentDate,
-            existingProduct.id
-          ]
-        );
-        existingProduct.name = scrapedProduct.title;
-        existingProduct.image = scrapedProduct.image;
-        existingProduct.ean = scrapedProduct.gtin;
-        existingProduct.description = scrapedProduct.description;
-        existingProduct.url = scrapedProduct.url;
-        existingProduct.inStock = scrapedProduct.inStock;
-        existingProduct.lastChangeDate = this.currentDate;
-      }
-      return existingProduct;
-    } else {
-      const res = await productsConn.query<UpsertResult>(
-        'INSERT INTO products (storeId, sku, name, image, ean, description, url, inStock, firstSeenDate, lastChangeDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          this.storeConfig.id,
-          scrapedProduct.sku,
-          scrapedProduct.title,
-          scrapedProduct.image,
-          scrapedProduct.gtin,
-          scrapedProduct.description,
-          scrapedProduct.url,
-          scrapedProduct.inStock,
-          this.currentDate,
-          this.currentDate
-        ]
+      return await this.updateProduct(
+        productsConn,
+        existingProduct,
+        scrapedProduct
       );
-      return {
-        id: res.insertId,
-        storeId: this.storeConfig.id,
-        sku: scrapedProduct.sku,
-        name: scrapedProduct.title,
-        image: scrapedProduct.image,
-        ean: scrapedProduct.gtin,
-        description: scrapedProduct.description,
-        url: scrapedProduct.url,
-        inStock: scrapedProduct.inStock,
-        firstSeenDate: this.currentDate,
-        lastChangeDate: this.currentDate
-      };
+    } else {
+      return await this.insertProduct(productsConn, scrapedProduct);
     }
   }
 
@@ -255,7 +358,7 @@ export default class SQLStoreUpdater {
     productId: DbId,
     newPrice: number,
     table: 'prices' | 'salePrices'
-  ): Promise<boolean> {
+  ): Promise<'newPrice' | 'updatedPrice' | false> {
     const lastPrice = await conn
       .query<
         ProductPrice[]
@@ -270,7 +373,7 @@ export default class SQLStoreUpdater {
         `INSERT INTO ${table} (productId, price, start, end) VALUES (?, ?, ?, ?)`,
         [productId, newPrice, this.currentDate, this.currentDate]
       );
-      return true;
+      return 'newPrice';
     } else if (
       lastPrice.price === newPrice &&
       lastPrice.end < this.currentDate
@@ -279,7 +382,7 @@ export default class SQLStoreUpdater {
         `UPDATE ${table} SET end = ? WHERE productId = ? AND start = ?`,
         [this.currentDate, productId, lastPrice.start]
       );
-      return true;
+      return 'updatedPrice';
     }
     return false;
   }
@@ -426,6 +529,7 @@ export default class SQLStoreUpdater {
           [attributeGroup.name]
         );
         existingAttributeGroupId = res.insertId;
+        this.result.newAttributeGroups++;
       }
       for (const attribute of attributeGroup.attributes) {
         try {
@@ -440,6 +544,7 @@ export default class SQLStoreUpdater {
               [attribute.name, existingAttributeGroupId]
             );
             existingAttributeId = res.insertId;
+            this.result.newAttributes++;
           }
           const existingAttributeToProductEntry =
             existingAttributeToProduct.find(
@@ -451,6 +556,7 @@ export default class SQLStoreUpdater {
               [existingAttributeId, product.id, attribute.value]
             );
             attributesChanged = true;
+            this.result.newAttributesToProducts++;
           } else if (
             existingAttributeToProductEntry.value !== attribute.value
           ) {
@@ -459,6 +565,7 @@ export default class SQLStoreUpdater {
               [attribute.value, existingAttributeId, product.id]
             );
             attributesChanged = true;
+            this.result.updatedAttributesToProducts++;
           }
         } catch (e) {
           console.error(

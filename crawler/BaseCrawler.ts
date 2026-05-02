@@ -171,7 +171,7 @@ export default abstract class BaseCrawler {
         persistStateKeyValueStoreId: `${this.store.safeStoreName}-keyvalue`,
         persistStateKey: `${this.store.safeStoreName}-session-pool`
       },
-      maxRequestsPerCrawl: 30000,
+      // maxRequestsPerCrawl: 30000,
       maxRequestsPerMinute: 30,
       maxRequestRetries: 3,
       requestHandlerTimeoutSecs: 240,
