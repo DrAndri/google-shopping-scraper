@@ -14,11 +14,13 @@ interface SolrResponse {
   };
 }
 
-export interface SolrProduct extends Product {
+export type SolrProduct = Omit<Product, 'firstSeenDate' | 'lastChangeDate'> & {
   price?: number;
-
+  // Solr doesn't support Date objects, so we convert to string
+  firstSeenDate: string;
+  lastChangeDate: string;
   [key: `attr_${string}`]: string | undefined;
-}
+};
 
 const SOLR_URI = process.env.SOLR_URI ?? 'http://localhost:8983/solr';
 
@@ -50,7 +52,11 @@ export const getSolrProduct = (
   price?: number,
   attributes?: AttributeToProduct[]
 ): SolrProduct => {
-  const solrProduct: SolrProduct = { ...product };
+  const solrProduct: SolrProduct = {
+    ...product,
+    firstSeenDate: product.firstSeenDate.toISOString().split('T')[0],
+    lastChangeDate: product.lastChangeDate.toISOString().split('T')[0]
+  };
   if (price !== undefined) {
     solrProduct.price = price;
   }
