@@ -125,8 +125,8 @@ export default class PageScraper extends BaseScraper {
               ? ((await this.evalText(
                   selectors.attributeGroupName,
                   attributeGroupLocator
-                )) ?? 'Óflokkað')
-              : 'Óflokkað';
+                )) ?? undefined)
+              : undefined;
             const attributeLocator = attributeGroupLocator
               .locator(selectors.attribute)
               .filter({

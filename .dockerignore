@@ -23,7 +23,9 @@
 LICENSE
 README.md
 
-**/mongodb
-**/logs
-**/mongodb-*
-**/mysql
+/mongodb
+/logs
+/mongodb-*
+/mysql
+/solr
+/solr-configsets

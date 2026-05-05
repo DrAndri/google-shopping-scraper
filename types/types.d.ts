@@ -42,7 +42,7 @@ export interface ProductSnapshot {
 }
 
 export interface ProductAttributeGroup {
-  name: string;
+  name?: string;
   attributes: ProductAttribute[];
 }
 
@@ -74,7 +74,6 @@ export interface StoreUpdateResult {
   inStockUpdates: number;
   gtinUpdates: number;
   urlUpdates: number;
-  
 }
 
 export interface UpsertManyResult {

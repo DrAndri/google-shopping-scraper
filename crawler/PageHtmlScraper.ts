@@ -134,8 +134,8 @@ export default class PageHtmlScraper extends BaseScraper {
                     .find(selectors.attributeGroupName)
                     .first()
                     .text()
-                    .trim() ?? 'Óflokkað')
-                : 'Óflokkað';
+                    .trim() ?? undefined)
+                : undefined;
               const attributeLocator = $(attributeGroupLocator)
                 .find(selectors.attribute)
                 .filter(function () {
@@ -169,7 +169,7 @@ export default class PageHtmlScraper extends BaseScraper {
               }
               if (attributes.length > 0) {
                 attributeGroups.push({
-                  name: groupName ? groupName : 'Óflokkað',
+                  name: groupName,
                   attributes: attributes
                 });
               }

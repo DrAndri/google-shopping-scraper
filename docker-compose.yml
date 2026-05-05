@@ -4,6 +4,7 @@ services:
     build:
       dockerfile: Dockerfile
     environment:
+      SOLR_URI: ${SOLR_URI}
       MONGODB_URI: ${MONGODB_URI}
       MARIADB_HOST: ${MARIADB_HOST}
       MARIADB_DATABASE: ${MARIADB_DATABASE}
@@ -68,3 +69,30 @@ services:
     volumes:
       - ./mysql:/var/lib/mysql
       - ./initMariaDb:/docker-entrypoint-initdb.d # Optional: Run .sql scripts on startup
+  solr:
+    image: solr:latest
+    container_name: webstorinator-solr
+    ports:
+      - '8983:8983'
+    volumes:
+      - ./solr:/var/solr
+      #- ./solr-configsets/products:/opt/solr/server/solr/configsets/products:ro
+    # command:
+    #   - solr-precreate
+    #   - products
+    #   - /opt/solr/server/solr/configsets/products_config
+    # entrypoint:
+    #   - bash
+    #   - '-c'
+    #   - 'precreate-core products /configsets/products; precreate-core manufacturers /configsets/manufacturers; precreate-core categories /configsets/categories; precreate-core attributes /configsets/attributes; precreate-core attribute-groups /configsets/attribute-groups; solr-foreground'
+    environment:
+      - SOLR_HEAP=4g
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -q -O - http://localhost:8983/solr/admin/cores?action=STATUS || exit 1'
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10

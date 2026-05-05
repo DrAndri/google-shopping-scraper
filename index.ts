@@ -12,7 +12,10 @@ import {
 import WebshopCrawler from './crawler/WebshopCrawler.js';
 import WebshopHtmlCrawler from './crawler/WebshopHtmlCrawler.js';
 import { createPool } from 'mariadb';
-import SQLStoreUpdater, { poolConfig } from './SQLStoreUpdater.js';
+import SQLStoreUpdater, {
+  indexEverything,
+  poolConfig
+} from './SQLStoreUpdater.js';
 import { configs } from './crawler/storeConfigs.js';
 import migrate from './MongoToSQLMigrate.js';
 import { MemoryStorage, RequestQueue } from 'crawlee';
@@ -107,8 +110,8 @@ async function updateStore(
   return storeUpdater.result;
 }
 
-function reportResults(results: StoreUpdateResult): void {
-  console.log('FINISHED UPDATING', results.store.name);
+function reportResults(results: StoreUpdateResult, storeName: string): void {
+  console.log('FINISHED UPDATING', storeName);
   console.log('New products:', results.newProducts);
   console.log('Updated products:', results.updatedProducts);
   console.log('New prices:', results.newPrices);
@@ -160,7 +163,7 @@ async function updateAllStores(): Promise<void> {
       promises.push(
         limit(() =>
           updateStore(store, options)
-            .then(reportResults)
+            .then((results) => reportResults(results, store.name))
             .catch((error) => {
               console.log('Error updating store ' + store.name, error);
             })
@@ -200,9 +203,14 @@ if (process.env.RUN_MONGO_TO_SQL_MIGRATION === 'true') {
   await migrate(mongoDb).catch((error) => console.log(error));
 }
 
+if (process.env.INDEX_EVERYTHING === 'true') {
+  console.log('Running index everything');
+  await indexEverything();
+}
+
 if (process.env.RUN_STARTUP_UPDATE === 'true') {
   console.log('Running startup update');
-  updateAllStores().catch((error) => console.log(error));
+  await updateAllStores();
 }
 
 if (process.env.CRON_SCHEDULE) {

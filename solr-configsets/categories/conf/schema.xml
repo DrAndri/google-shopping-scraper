@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema name="categories" version="1.7">
+  <fieldType name="plong" class="solr.LongPointField"/>
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true"/>
+
+  <fieldType name="text_edge_ngram" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="20"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+    </analyzer>
+  </fieldType>
+
+  <field name="_version_" type="plong" indexed="false" stored="false"/>
+  <field name="_root_" type="string" indexed="true" stored="false" docValues="false"/>
+
+  <field name="id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="name" type="text_edge_ngram" indexed="true" stored="true"/>
+  <field name="parentId" type="string" indexed="true" stored="true"/>
+
+  <uniqueKey>id</uniqueKey>
+</schema>

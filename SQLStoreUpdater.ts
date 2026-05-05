@@ -12,13 +12,25 @@ import {
   Product,
   AttributeToProduct,
   DbId,
-  IdLookup
+  IdLookup,
+  Manufacturer,
+  AttributeGroup,
+  Attribute
 } from './types/db-types.js';
 import {
   ProductSnapshot,
   ProductAttributeGroup,
   StoreUpdateResult
 } from './types/types.js';
+import {
+  getSolrProduct,
+  indexAttributeGroups,
+  indexAttributes,
+  indexCategories,
+  indexManufacturers,
+  indexProducts,
+  SolrProduct
+} from './SolrUtils.js';
 
 export const poolConfig: PoolConfig = {
   host: process.env.MARIADB_HOST,
@@ -27,6 +39,103 @@ export const poolConfig: PoolConfig = {
   password: process.env.MARIADB_SCRAPER_PASSWORD,
   connectionLimit: 1,
   acquireTimeout: 30000
+};
+
+const getFirstDbId = (res: IdLookup[]): DbId | undefined => {
+  return getFirstResult(res)?.id;
+};
+
+const getFirstResult = <T>(res: T[]): T | undefined => {
+  return res.length > 0 ? res[0] : undefined;
+};
+
+const getLatestPrice = async (
+  conn: PoolConnection,
+  table: 'prices' | 'salePrices',
+  productId: DbId
+): Promise<ProductPrice | undefined> => {
+  return await conn
+    .query<
+      ProductPrice[]
+    >(`SELECT price, start, end FROM ${table} WHERE productId = ? ORDER BY start DESC LIMIT 1`, [productId])
+    .then((res) => getFirstResult(res));
+};
+const chunkSolrUpdate = async <T>(
+  items: T[],
+  updateFunc: (chunk: T[]) => Promise<void>
+): Promise<void> => {
+  const chunkSize = 100;
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    await updateFunc(chunk);
+  }
+};
+
+const getAttriButesToProducts = async (
+  conn: PoolConnection,
+  product: Product
+): Promise<AttributeToProduct[]> => {
+  return await conn.query<AttributeToProduct[]>(
+    'SELECT * FROM attributeToProducts WHERE productId = ?',
+    [product.id]
+  );
+};
+
+export const indexEverything = async (): Promise<void> => {
+  const pool = createPool(poolConfig);
+  const conn = await pool.getConnection();
+
+  const products = await conn.query<Product[]>('SELECT * FROM products');
+
+  await chunkSolrUpdate(products, async (productsChunk) => {
+    const solrProducts: SolrProduct[] = [];
+    for (const product of productsChunk) {
+      const attributes = await getAttriButesToProducts(conn, product);
+      const latestPrice = await getLatestPrice(conn, 'prices', product.id);
+      const latestSalePrice = await getLatestPrice(
+        conn,
+        'salePrices',
+        product.id
+      );
+
+      let price;
+      if (latestPrice && latestSalePrice) {
+        price =
+          latestSalePrice.end >= latestPrice.end
+            ? latestSalePrice.price
+            : latestPrice.price;
+      } else if (latestPrice) {
+        price = latestPrice.price;
+      } else if (latestSalePrice) {
+        price = latestSalePrice.price;
+      }
+
+      solrProducts.push(getSolrProduct(product, price, attributes));
+    }
+    await indexProducts(solrProducts);
+  });
+  const categories = await conn.query<Category[]>('SELECT * FROM categories');
+  const manufacturers = await conn.query<Manufacturer[]>(
+    'SELECT * FROM manufacturers'
+  );
+  const attributeGroups = await conn.query<AttributeGroup[]>(
+    'SELECT * FROM attributeGroups'
+  );
+  const attributes = await conn.query<Attribute[]>('SELECT * FROM attributes');
+
+  await conn.release();
+  await chunkSolrUpdate(categories, async (categoriesChunk) => {
+    await indexCategories(categoriesChunk);
+  });
+  await chunkSolrUpdate(manufacturers, async (manufacturersChunk) => {
+    await indexManufacturers(manufacturersChunk);
+  });
+  await chunkSolrUpdate(attributeGroups, async (attributeGroupsChunk) => {
+    await indexAttributeGroups(attributeGroupsChunk);
+  });
+  await chunkSolrUpdate(attributes, async (attributesChunk) => {
+    await indexAttributes(attributesChunk);
+  });
 };
 
 export default class SQLStoreUpdater {
@@ -94,14 +203,6 @@ export default class SQLStoreUpdater {
     return res;
   }
 
-  getFirstDbId(res: IdLookup[]): DbId | undefined {
-    return this.getFirstResult(res)?.id;
-  }
-
-  getFirstResult<T>(res: T[]): T | undefined {
-    return res.length > 0 ? res[0] : undefined;
-  }
-
   async updateLastChangeDate(product: Product): Promise<void> {
     if (product.lastChangeDate < this.currentDate) {
       await this.queryPool(this.productsPool, async (productsConn) => {
@@ -114,10 +215,12 @@ export default class SQLStoreUpdater {
   }
 
   async updateProductInDb(scrapedProduct: ProductSnapshot): Promise<void> {
-    const existingProduct = await this.queryPool(
+    const existingProductResult = await this.queryPool(
       this.productsPool,
       async (productsConn) => this.upsertProduct(productsConn, scrapedProduct)
     );
+
+    const existingProduct = existingProductResult.product;
 
     const promises = [];
     promises.push(
@@ -213,8 +316,30 @@ export default class SQLStoreUpdater {
         })
       );
     }
+
     const results = await Promise.all(promises);
-    if (results.some((r) => r)) {
+    const anyUpdate = results.some((r) => r);
+    if (
+      existingProductResult.result === 'new' ||
+      existingProductResult.result === 'updated' ||
+      anyUpdate
+    ) {
+      const attributes = await this.queryPool(
+        this.attributesPool,
+        async (attributesConn) => {
+          return await getAttriButesToProducts(attributesConn, existingProduct);
+        }
+      );
+      await indexProducts([
+        getSolrProduct(
+          existingProduct,
+          scrapedProduct.salePrice ?? scrapedProduct.price,
+          attributes
+        )
+      ]);
+    }
+    //Update last changed date if there was a update and it hasn't been updated by product update logic already
+    if (anyUpdate && !existingProductResult.result) {
       await this.updateLastChangeDate(existingProduct);
     }
   }
@@ -258,7 +383,7 @@ export default class SQLStoreUpdater {
     productsConn: PoolConnection,
     existingProduct: Product,
     scrapedProduct: ProductSnapshot
-  ): Promise<Product> {
+  ): Promise<{ product: Product; result?: 'updated' }> {
     const colsToUpdate = [];
     if (scrapedProduct.title !== existingProduct.name) {
       colsToUpdate.push({ name: 'name', value: scrapedProduct.title });
@@ -287,7 +412,8 @@ export default class SQLStoreUpdater {
       colsToUpdate.push({ name: 'inStock', value: scrapedProduct.inStock });
       this.result.inStockUpdates++;
     }
-    if (colsToUpdate.length === 0) return existingProduct;
+    if (colsToUpdate.length === 0)
+      return { product: existingProduct, result: undefined };
     await productsConn.query(
       'UPDATE products SET ' +
         colsToUpdate.map((c) => `${c.name} = ?`).join(', ') +
@@ -330,18 +456,18 @@ export default class SQLStoreUpdater {
     existingProduct.inStock = scrapedProduct.inStock;
     existingProduct.lastChangeDate = this.currentDate;
     // }
-    return existingProduct;
+    return { product: existingProduct, result: 'updated' };
   }
 
   async upsertProduct(
     productsConn: PoolConnection,
     scrapedProduct: ProductSnapshot
-  ): Promise<Product> {
+  ): Promise<{ product: Product; result?: 'new' | 'updated' }> {
     const existingProduct = await productsConn
       .query<
         Product[]
       >('SELECT * FROM products WHERE sku = ? AND storeId = ? LIMIT 1', [scrapedProduct.sku, this.storeConfig.id])
-      .then((res) => this.getFirstResult(res));
+      .then((res) => getFirstResult(res));
     if (existingProduct) {
       return await this.updateProduct(
         productsConn,
@@ -349,7 +475,10 @@ export default class SQLStoreUpdater {
         scrapedProduct
       );
     } else {
-      return await this.insertProduct(productsConn, scrapedProduct);
+      return {
+        product: await this.insertProduct(productsConn, scrapedProduct),
+        result: 'new'
+      };
     }
   }
 
@@ -359,11 +488,7 @@ export default class SQLStoreUpdater {
     newPrice: number,
     table: 'prices' | 'salePrices'
   ): Promise<'newPrice' | 'updatedPrice' | false> {
-    const lastPrice = await conn
-      .query<
-        ProductPrice[]
-      >(`SELECT price, start, end FROM ${table} WHERE productId = ? ORDER BY start DESC LIMIT 1`, [productId])
-      .then((res) => this.getFirstResult(res));
+    const lastPrice = await getLatestPrice(conn, table, productId);
     if (
       lastPrice?.price !== newPrice ||
       this.storeConfig.lastScanDate > lastPrice.end
@@ -405,12 +530,13 @@ export default class SQLStoreUpdater {
       .query<
         IdLookup[]
       >('SELECT id FROM categories WHERE name = ? AND parentId IS NULL LIMIT 1', [categories[0]])
-      .then((res) => this.getFirstDbId(res));
+      .then((res) => getFirstDbId(res));
     if (!existingRootId) {
       const res = await conn.query<UpsertResult>(
         'INSERT INTO categories (name) VALUES (?)',
         [categories[0]]
       );
+      await indexCategories([{ id: res.insertId, name: categories[0] }]);
       existingRootId = res.insertId;
     }
 
@@ -420,12 +546,13 @@ export default class SQLStoreUpdater {
         .query<
           IdLookup[]
         >('SELECT id FROM categories WHERE name = ? AND parentId = ? LIMIT 1', [categories[i], parentId])
-        .then((res) => this.getFirstDbId(res));
+        .then((res) => getFirstDbId(res));
       if (!existingCategoryId) {
         const res = await conn.query<UpsertResult>(
           'INSERT INTO categories (name, parentId) VALUES (?, ?)',
           [categories[i], parentId]
         );
+        await indexCategories([{ id: res.insertId, name: categories[i] }]);
         parentId = res.insertId;
       } else {
         parentId = existingCategoryId;
@@ -457,7 +584,7 @@ export default class SQLStoreUpdater {
           .query<
             Category[]
           >('SELECT id, parentId FROM categories WHERE id = ? AND name = ? LIMIT 1', [currentCategory.parentId, categories[i]])
-          .then((res) => this.getFirstResult(res));
+          .then((res) => getFirstResult(res));
         if (parent) {
           i--;
           currentCategory = parent;
@@ -487,12 +614,13 @@ export default class SQLStoreUpdater {
       .query<
         IdLookup[]
       >('SELECT id FROM manufacturers WHERE name = ? LIMIT 1', [manufacturer])
-      .then((res) => this.getFirstDbId(res));
+      .then((res) => getFirstDbId(res));
     if (!existingManufacturerId) {
       const res = await conn.query<UpsertResult>(
         'INSERT INTO manufacturers (name) VALUES (?)',
         [manufacturer]
       );
+      await indexManufacturers([{ id: res.insertId, name: manufacturer }]);
       existingManufacturerId = res.insertId;
     }
     if (existingManufacturerId !== product.manufacturerId) {
@@ -503,6 +631,43 @@ export default class SQLStoreUpdater {
       return true;
     }
     return false;
+  }
+
+  async insertAttribute(
+    conn: PoolConnection,
+    attributeName: string,
+    attributeGroupId?: DbId
+  ): Promise<DbId> {
+    const params: (string | DbId)[] = [attributeName];
+    let insertQuery;
+    if (attributeGroupId) {
+      insertQuery = 'INSERT INTO attributes (name, groupId) VALUES (?, ?)';
+      params.push(attributeGroupId);
+    } else {
+      insertQuery = 'INSERT INTO attributes (name) VALUES (?)';
+    }
+
+    const res = await conn.query<UpsertResult>(insertQuery, params);
+    return res.insertId;
+  }
+
+  async selectAttributeId(
+    conn: PoolConnection,
+    attributeName: string,
+    attributeGroupId?: DbId
+  ): Promise<DbId | undefined> {
+    let query = 'SELECT id FROM attributes WHERE name = ?';
+    const params: (string | DbId)[] = [attributeName];
+    if (attributeGroupId) {
+      query += ' AND groupId = ?';
+      params.push(attributeGroupId);
+    } else {
+      query += ' AND groupId IS NULL';
+    }
+    query += ' LIMIT 1';
+    return await conn
+      .query<IdLookup[]>(query, params)
+      .then((res) => getFirstDbId(res));
   }
 
   async upsertAttributes(
@@ -516,35 +681,51 @@ export default class SQLStoreUpdater {
     );
 
     let attributesChanged = false;
+    //TODO: dont create a group for óflokkað
 
     for (const attributeGroup of attributes) {
-      let existingAttributeGroupId = await conn
-        .query<
-          IdLookup[]
-        >('SELECT id FROM attributeGroups WHERE name = ? LIMIT 1', [attributeGroup.name])
-        .then((res) => this.getFirstDbId(res));
-      if (!existingAttributeGroupId) {
-        const res = await conn.query<UpsertResult>(
-          'INSERT INTO attributeGroups (name) VALUES (?)',
-          [attributeGroup.name]
-        );
-        existingAttributeGroupId = res.insertId;
-        this.result.newAttributeGroups++;
+      let existingAttributeGroupId: DbId | undefined = undefined;
+      if (attributeGroup.name) {
+        existingAttributeGroupId = await conn
+          .query<
+            IdLookup[]
+          >('SELECT id FROM attributeGroups WHERE name = ? LIMIT 1', [attributeGroup.name])
+          .then((res) => getFirstDbId(res));
+
+        if (!existingAttributeGroupId) {
+          const res = await conn.query<UpsertResult>(
+            'INSERT INTO attributeGroups (name) VALUES (?)',
+            [attributeGroup.name]
+          );
+          existingAttributeGroupId = res.insertId;
+          this.result.newAttributeGroups++;
+          await indexAttributeGroups([
+            { id: res.insertId, name: attributeGroup.name }
+          ]);
+        }
       }
+
       for (const attribute of attributeGroup.attributes) {
         try {
-          let existingAttributeId = await conn
-            .query<
-              IdLookup[]
-            >('SELECT id FROM attributes WHERE name = ? AND groupId = ? LIMIT 1', [attribute.name, existingAttributeGroupId])
-            .then((res) => this.getFirstDbId(res));
+          let existingAttributeId = await this.selectAttributeId(
+            conn,
+            attribute.name,
+            existingAttributeGroupId
+          );
           if (!existingAttributeId) {
-            const res = await conn.query<UpsertResult>(
-              'INSERT INTO attributes (name, groupId) VALUES (?, ?)',
-              [attribute.name, existingAttributeGroupId]
+            existingAttributeId = await this.insertAttribute(
+              conn,
+              attribute.name,
+              existingAttributeGroupId
             );
-            existingAttributeId = res.insertId;
             this.result.newAttributes++;
+            await indexAttributes([
+              {
+                id: existingAttributeId,
+                name: attribute.name,
+                groupId: existingAttributeGroupId
+              }
+            ]);
           }
           const existingAttributeToProductEntry =
             existingAttributeToProduct.find(

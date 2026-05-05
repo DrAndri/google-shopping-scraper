@@ -134,3 +134,4 @@ dist
 /mongodb
 /mongodb-*
 /mysql
+/solr

@@ -86,7 +86,7 @@ export interface AttributeGroup {
 
 export interface Attribute {
   id: DbId;
-  groupId: DbId;
+  groupId?: DbId;
   name: string;
 }
 

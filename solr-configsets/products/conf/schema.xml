@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema name="products" version="1.7">
+  <!-- Field types -->
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true"/>
+  <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true"/>
+  <fieldType name="pint" class="solr.IntPointField"/>
+  <fieldType name="plong" class="solr.LongPointField"/>
+  <fieldType name="pdouble" class="solr.DoublePointField"/>
+  <fieldType name="pdate" class="solr.DatePointField"/>
+
+  <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+    </analyzer>
+  </fieldType>
+
+  <fieldType name="text_edge_ngram" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="20"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.ASCIIFoldingFilterFactory"/>
+    </analyzer>
+  </fieldType>
+
+  <fieldType name="text_sku" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.KeywordTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.EdgeNGramFilterFactory" minGramSize="2" maxGramSize="30"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.KeywordTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+  </fieldType>
+
+  <!-- Required Solr internal fields -->
+  <field name="_version_" type="plong" indexed="false" stored="false"/>
+  <field name="_root_" type="string" indexed="true" stored="false" docValues="false"/>
+
+  <!-- Fields -->
+  <field name="id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="storeId" type="pint" indexed="true" stored="true"/>
+  <field name="manufacturerId" type="pint" indexed="true" stored="true"/>
+  <field name="categoryId" type="plong" indexed="true" stored="true"/>
+
+  <field name="sku" type="text_sku" indexed="true" stored="true"/>
+
+  <field name="name" type="text_general" indexed="true" stored="true"/>
+
+  <field name="ean" type="string" indexed="true" stored="true"/>
+  <field name="description" type="text_general" indexed="true" stored="true"/>
+  <field name="url" type="string" indexed="false" stored="true"/>
+  <field name="image" type="string" indexed="false" stored="true"/>
+  <field name="inStock" type="boolean" indexed="true" stored="true"/>
+
+  <field name="price" type="pdouble" indexed="true" stored="true"/>
+  <field name="firstSeenDate" type="pdate" indexed="true" stored="true"/>
+  <field name="lastChangeDate" type="pdate" indexed="true" stored="true"/>
+
+  <!-- Dynamic attribute fields -->
+  <dynamicField name="attr_*" type="string" indexed="true" stored="true" multiValued="true"/>
+
+  <uniqueKey>id</uniqueKey>
+</schema>
