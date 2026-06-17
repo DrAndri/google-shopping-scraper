@@ -286,7 +286,7 @@ export default class PageScraper extends BaseScraper {
       description: description,
       inStock: inStock,
       attributes: attributeGroups,
-      url: productLocator.page().url(),
+      url: this.getRelativeUrl(productLocator.page().url()),
       categories: categories,
       gtin: undefined
     };

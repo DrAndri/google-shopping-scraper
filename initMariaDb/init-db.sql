@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS webstorinator.storeScans (
     inStockError INT UNSIGNED,
     categoriesError INT UNSIGNED,
 
+    crawler BOOLEAN NOT NULL,
+
     PRIMARY KEY (storeId, date),
     CONSTRAINT fk_storeScans_store FOREIGN KEY (storeId) REFERENCES webstorinator.stores(id) ON DELETE CASCADE
 );

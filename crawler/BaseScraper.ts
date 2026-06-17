@@ -13,4 +13,9 @@ export default abstract class BaseScraper {
     this.sanitizers = sanitizers;
     this.categoryBanList = categoryBanList;
   }
+
+  getRelativeUrl(url: string): string {
+    const urlObj = new URL(url);
+    return urlObj.pathname + urlObj.search + urlObj.hash;
+  }
 }

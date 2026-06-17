@@ -4,6 +4,7 @@ import {
   Log,
   PlaywrightCrawler,
   PlaywrightCrawlerOptions,
+  RequestList,
   RequestQueue
 } from 'crawlee';
 import {
@@ -27,12 +28,14 @@ export default abstract class BaseCrawler {
   crawler: CheerioCrawler | PlaywrightCrawler;
   hostname: string;
   hostnameIncludesWww: boolean;
+  mode: 'list' | 'crawler';
 
   constructor(
     store: StoreConfig,
     currentDate: Date,
     updateProductInDb: (scrapedProduct: ProductSnapshot) => Promise<void>,
-    requestQueue: RequestQueue
+    requestQueue?: RequestQueue,
+    requestList?: RequestList
   ) {
     this.store = store;
     this.currentDate = currentDate;
@@ -49,9 +52,12 @@ export default abstract class BaseCrawler {
       inStockError: 0,
       categoriesError: 0
     };
-    this.crawler = this.setupCrawler(this.getConfiguration(requestQueue));
+    this.crawler = this.setupCrawler(
+      this.getConfiguration(requestQueue, requestList)
+    );
     this.hostname = new URL(this.store.options.startUrl).hostname;
     this.hostnameIncludesWww = this.hostname.startsWith('www.');
+    this.mode = requestList !== undefined ? 'list' : 'crawler';
   }
 
   async handleProductScrapeResult(
@@ -152,7 +158,8 @@ export default abstract class BaseCrawler {
   }
 
   getConfiguration(
-    requestQueue: RequestQueue
+    requestQueue?: RequestQueue,
+    requestList?: RequestList
   ): CheerioCrawlerOptions | PlaywrightCrawlerOptions {
     const crawlLog = new Log({ prefix: this.store.name });
 
@@ -162,6 +169,7 @@ export default abstract class BaseCrawler {
     // config.set('storageDir', '/dev/shm');
 
     const configuration: CheerioCrawlerOptions | PlaywrightCrawlerOptions = {
+      requestList: requestList,
       requestQueue: requestQueue,
       statisticsOptions: {
         logIntervalSecs: 600 // 10 minutes

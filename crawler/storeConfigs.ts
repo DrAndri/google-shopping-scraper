@@ -471,7 +471,7 @@ export const configs: WebshopCrawlerOptions[] = [
     storeId: 15,
     startUrl: 'https://www.bauhaus.is',
     type: 'crawler',
-    productPageIdentifier: 'Vörulýsing',
+    productPageIdentifier: 'Vöruupplýsingar',
     urlBlacklist: [
       '/afgreidslutimar',
       '/fyrirtaekjasvid-bauhaus',
@@ -499,10 +499,10 @@ export const configs: WebshopCrawlerOptions[] = [
       '/cookie-policy'
     ],
     selectors: {
-      productPage: 'body',
+      productPage: '#main-content > div',
       oldPrice: '',
       listPrice:
-        ' .price-wrapper > .price-final_price > .price-block__price > .amount-default > .price-wrapper',
+        '#main-content > div > div.pb-15.lg\:grid.lg\:gap-11.lg\:\[grid-template-areas\:\"gallery_details\"_\"description_details\"\].lg\:\[grid-template-columns\:1fr_400px\].xl\:\[grid-template-columns\:1fr_565px\] > div.flex.flex-col.gap-11.sm\:gap-7.\[grid-area\:details\].lg\:sticky.mb-11.lg\:top-15.lg\:h-min.lg\:mb-0 > div.productPrice-module-scss-module__YcM8Vq__pdpPrices > div > div.productPrice-module-scss-module__YcM8Vq__priceGroup > div',
       name: 'h1.page-title > span',
       sku: 'tr:contains("Strikamerki") > td',
       image: '#interactive-0',

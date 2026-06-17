@@ -63,7 +63,7 @@ export default class WebshopHtmlCrawler extends BaseCrawler {
       }
 
       logger.close();
-      await addLinksToQueue($);
+      if (this.mode === 'crawler') await addLinksToQueue($);
     };
 
     const addLinksToQueue = async ($: CheerioAPI) => {

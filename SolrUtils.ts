@@ -39,7 +39,9 @@ const submitUpdate = async (
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(data)
+    body: JSON.stringify(data, <T>(value: T) =>
+      typeof value === 'bigint' ? value.toString() : value
+    )
   });
   if (!response.ok) {
     console.error(await response.json());
@@ -54,8 +56,8 @@ export const getSolrProduct = (
 ): SolrProduct => {
   const solrProduct: SolrProduct = {
     ...product,
-    firstSeenDate: product.firstSeenDate.toISOString().split('T')[0],
-    lastChangeDate: product.lastChangeDate.toISOString().split('T')[0]
+    firstSeenDate: product.firstSeenDate.toISOString(),
+    lastChangeDate: product.lastChangeDate.toISOString()
   };
   if (price !== undefined) {
     solrProduct.price = price;

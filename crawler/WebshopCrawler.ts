@@ -132,7 +132,7 @@ export default class WebshopCrawler extends BaseCrawler {
       }
 
       logger.close();
-      await addLinksToQueue(page);
+      if (this.mode === 'crawler') await addLinksToQueue(page);
       await page.close();
     };
     const scrollToBottom = async (

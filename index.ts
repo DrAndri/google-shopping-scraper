@@ -7,36 +7,94 @@ import {
   StoreUpdateResult,
   StoreConfig,
   Store,
-  WebshopCrawlerOptions
+  WebshopCrawlerOptions,
+  DbId
 } from './types/index.js';
 import WebshopCrawler from './crawler/WebshopCrawler.js';
 import WebshopHtmlCrawler from './crawler/WebshopHtmlCrawler.js';
-import { createPool } from 'mariadb';
+import { createPool, Pool } from 'mariadb';
 import SQLStoreUpdater, {
   indexEverything,
   poolConfig
 } from './SQLStoreUpdater.js';
 import { configs } from './crawler/storeConfigs.js';
 import migrate from './MongoToSQLMigrate.js';
-import { MemoryStorage, RequestQueue } from 'crawlee';
+import { MemoryStorage, RequestList, RequestQueue } from 'crawlee';
 
 const storeConcurrencyLimit = parseInt(
   process.env.STORE_CONCURRENCY_LIMIT ?? '5'
 );
-const limit = pLimit(storeConcurrencyLimit);
 
 dotenv.config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
-const storesPool = createPool(poolConfig);
-const attributesPool = createPool(poolConfig);
-const categoriesPool = createPool(poolConfig);
-const manufacturersPool = createPool(poolConfig);
+const updateAllActiveProducts = async () => {
+  const limit = pLimit(storeConcurrencyLimit);
+  const pool = createPool(poolConfig);
+  const attributesPool = createPool(poolConfig);
+  const categoriesPool = createPool(poolConfig);
+  const manufacturersPool = createPool(poolConfig);
+  const products = await pool.query<
+    { url: string | undefined; storeId: DbId }[]
+  >(
+    'SELECT url, storeId FROM products JOIN prices ON products.id = prices.productId JOIN stores ON products.storeId = stores.id WHERE prices.end = stores.lastScanDate AND stores.scraperEnabled = 1'
+  );
+  const stores = await pool.query<Store[]>(
+    'SELECT * FROM stores WHERE scraperEnabled = 1'
+  );
+  await pool.end();
+  const storeMap = new Map<DbId, string[]>();
+  for (const product of products) {
+    if (product.url) {
+      if (!storeMap.has(product.storeId)) {
+        storeMap.set(product.storeId, []);
+      }
+      storeMap.get(product.storeId)?.push(product.url);
+    }
+  }
+
+  const promises = [];
+
+  for (const [storeId, urls] of storeMap.entries()) {
+    const store = stores.find((s) => s.id === storeId);
+    console.log(`Scraping ${urls.length} products for store ${store?.name}`);
+    const options = configs.find((config) => config.storeId === storeId);
+
+    if (options !== undefined && store !== undefined) {
+      promises.push(
+        limit(() =>
+          updateStore(
+            store,
+            options,
+            attributesPool,
+            categoriesPool,
+            manufacturersPool,
+            urls.map((url) => options.startUrl + url)
+          )
+        )
+      );
+    } else {
+      console.log('No config found for store ' + store?.name);
+    }
+  }
+  await Promise.all(promises);
+  await Promise.all([
+    attributesPool.end(),
+    categoriesPool.end(),
+    manufacturersPool.end()
+  ]);
+
+  console.log('ALL ACTIVE PRODUCTS UPDATED');
+};
 
 async function updateStore(
   store: Store,
-  options: WebshopCrawlerOptions
+  options: WebshopCrawlerOptions,
+  attributesPool: Pool,
+  categoriesPool: Pool,
+  manufacturersPool: Pool,
+  urlList?: string[]
 ): Promise<StoreUpdateResult> {
   const currentDate = new Date();
   currentDate.setHours(0, 0, 0, 0);
@@ -57,16 +115,22 @@ async function updateStore(
     persistStorage: false,
     writeMetadata: false
   });
-  const requestQueue = await RequestQueue.open(safeStoreName, {
-    storageClient: memoryStorage
-  });
+  const requestQueue = urlList
+    ? undefined
+    : await RequestQueue.open(safeStoreName, {
+        storageClient: memoryStorage
+      });
+  const requestList = urlList
+    ? await RequestList.open(safeStoreName, urlList)
+    : undefined;
   let crawler;
   if (options.type === 'crawler') {
     crawler = new WebshopCrawler(
       storeConfig,
       currentDate,
       (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct),
-      requestQueue
+      requestQueue,
+      requestList
     );
     await crawler.crawlSite();
   } else if (options.type === 'httpcrawler') {
@@ -74,14 +138,17 @@ async function updateStore(
       storeConfig,
       currentDate,
       (scrapedProduct) => storeUpdater.updateProductInDb(scrapedProduct),
-      requestQueue
+      requestQueue,
+      requestList
     );
     await crawler.crawlSite();
   } else
     return Promise.reject(
       new Error('Type not supported for store ' + store.name)
     );
-  await requestQueue.drop();
+  await requestQueue?.drop();
+  await memoryStorage.teardown();
+  const storesPool = createPool(poolConfig);
   await storesPool.getConnection().then(async (conn) => {
     await conn.query('UPDATE stores SET lastScanDate = ? WHERE id = ?', [
       currentDate,
@@ -89,7 +156,7 @@ async function updateStore(
     ]);
     const result = crawler.result;
     await conn.query(
-      'INSERT INTO storeScans (storeId, date, totalRequests, totalProcessed, totalErrored, descriptionError, attributeError, imageError, brandError, nameError, inStockError, categoriesError) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO storeScans (storeId, date, totalRequests, totalProcessed, totalErrored, descriptionError, attributeError, imageError, brandError, nameError, inStockError, categoriesError, crawler) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         store.id,
         currentDate,
@@ -102,11 +169,13 @@ async function updateStore(
         result.brandError,
         result.nameError,
         result.inStockError,
-        result.categoriesError
+        result.categoriesError,
+        urlList ? false : true
       ]
     );
     await conn.release();
   });
+  await storesPool.end();
   return storeUpdater.result;
 }
 
@@ -142,7 +211,7 @@ function reportResults(results: StoreUpdateResult, storeName: string): void {
   console.log('URL updates:', results.urlUpdates);
 }
 
-async function getAllStores(): Promise<Store[]> {
+async function getAllStores(storesPool: Pool): Promise<Store[]> {
   return storesPool.getConnection().then(async (conn) => {
     const res = conn.query<Store[]>(
       'SELECT * FROM stores WHERE scraperEnabled = true'
@@ -153,7 +222,13 @@ async function getAllStores(): Promise<Store[]> {
 }
 
 async function updateAllStores(): Promise<void> {
-  const stores = await getAllStores();
+  const limit = pLimit(storeConcurrencyLimit);
+  const storesPool = createPool(poolConfig);
+  const attributesPool = createPool(poolConfig);
+  const categoriesPool = createPool(poolConfig);
+  const manufacturersPool = createPool(poolConfig);
+  const stores = await getAllStores(storesPool);
+  await storesPool.end();
   console.log(stores);
   const promises = [];
   for (const store of stores) {
@@ -162,7 +237,13 @@ async function updateAllStores(): Promise<void> {
     if (options !== undefined) {
       promises.push(
         limit(() =>
-          updateStore(store, options)
+          updateStore(
+            store,
+            options,
+            attributesPool,
+            categoriesPool,
+            manufacturersPool
+          )
             .then((results) => reportResults(results, store.name))
             .catch((error) => {
               console.log('Error updating store ' + store.name, error);
@@ -173,9 +254,14 @@ async function updateAllStores(): Promise<void> {
       console.log('No config found for store ' + store.name);
     }
   }
-  await Promise.all(promises).then(() => {
-    console.log('ALL STORES UPDATED');
-  });
+  await Promise.all(promises);
+  await Promise.all([
+    attributesPool.end(),
+    categoriesPool.end(),
+    manufacturersPool.end()
+  ]);
+
+  console.log('ALL STORES UPDATED');
 }
 async function initMongodbCollections(db: Db): Promise<string[]> {
   return Promise.all([
@@ -195,11 +281,10 @@ async function getMongodb(): Promise<Db> {
   return mongoClient.db('google-shopping-scraper');
 }
 
-const mongoDb = await getMongodb();
-await initMongodbCollections(mongoDb);
-
 if (process.env.RUN_MONGO_TO_SQL_MIGRATION === 'true') {
   console.log('Running migration');
+  const mongoDb = await getMongodb();
+  await initMongodbCollections(mongoDb);
   await migrate(mongoDb).catch((error) => console.log(error));
 }
 
@@ -210,15 +295,22 @@ if (process.env.INDEX_EVERYTHING === 'true') {
 
 if (process.env.RUN_STARTUP_UPDATE === 'true') {
   console.log('Running startup update');
-  await updateAllStores();
+  await updateAllActiveProducts();
+  // await updateAllStores();
 }
 
 if (process.env.CRON_SCHEDULE) {
   cron.schedule(process.env.CRON_SCHEDULE, () => {
     console.log('Updating all stores');
-    getMongodb()
-      .then(updateAllStores)
-      .catch((error) => console.log(error));
+    updateAllStores().catch((error) => console.log(error));
+  });
+  console.log('Cron schedule started');
+}
+
+if (process.env.CRON_ACTIVE_SCHEDULE) {
+  cron.schedule(process.env.CRON_ACTIVE_SCHEDULE, () => {
+    console.log('Updating active products');
+    updateAllActiveProducts().catch((error) => console.log(error));
   });
   console.log('Cron schedule started');
 }
